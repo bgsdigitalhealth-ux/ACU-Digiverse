@@ -378,105 +378,17 @@ function colleges(a, id) {
     if ($("#c_add_conf")) { $("#c_add_conf").onclick = () => { S.eventConfs.push({ id: uid(), p1: "IQAC", p2: "BGS", seq: "01", fy: getFinYear(), college: id }); save(); colleges('manage', id); }; document.querySelectorAll(".c_save_conf").forEach(b => b.onclick = (e) => { const cid = e.target.dataset.id, conf = S.eventConfs.find(x => x.id === cid); if (conf) { conf.p1 = $("#p1_" + cid).value.trim() || "IQAC"; conf.p2 = $("#p2_" + cid).value.trim() || "BGS"; conf.seq = $("#sq_" + cid).value.trim() || "01"; save(); alert("Configuration saved."); } }); document.querySelectorAll(".c_del_conf").forEach(b => b.onclick = (e) => { const cid = e.target.dataset.id; if (cfs.length > 1 && confirm("Delete this configuration?")) { S.eventConfs = S.eventConfs.filter(x => x.id !== cid); save(); colleges('manage', id); } }); }
     return;
   }
-  const makeDeptRow = (idx) => `<div class="c-dept-row card" style="margin-bottom:12px; padding:14px; background:var(--ac2); border:1px solid var(--ln)"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px"><strong style="font-size:13px; color:var(--tx)">Department <span class="d-idx">#${idx}</span></strong><button type="button" class="r sm c-rm-dept" style="margin:0; padding:3px 8px; font-size:12px" title="Remove this department">✕ Remove</button></div><div class="row"><div><label style="margin-top:0">Department name *</label><input class="cd_name" placeholder="e.g. Department of Biotechnology"></div><div><label style="margin-top:0">Head of department</label><input class="cd_hod" placeholder="e.g. Dr. Suresh"></div></div><details style="margin-top:10px"><summary style="font-size:13px; color:var(--ac); cursor:pointer; font-weight:600">Assign Login Users (Optional)</summary><div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--ln)"><p class="s" style="margin:0 0 8px; font-size:12px">Create login accounts scoped to this department.</p><div class="row"><div><label style="margin-top:0">User 1 full name</label><input class="cd_u1_name" placeholder="Full name"></div><div><label style="margin-top:0">User 1 email ID</label><input class="cd_u1_email" type="email" placeholder="user1@example.com"></div></div><div class="row" style="margin-top:8px"><div><label style="margin-top:0">User 2 full name (optional)</label><input class="cd_u2_name" placeholder="Full name"></div><div><label style="margin-top:0">User 2 email ID (optional)</label><input class="cd_u2_email" type="email" placeholder="user2@example.com"></div></div></div></details></div>`;
-  const reindexDepts = () => {
-    const rows = document.querySelectorAll(".c-dept-row");
-    rows.forEach((r, i) => { const sp = r.querySelector(".d-idx"); if (sp) sp.textContent = "#" + (i + 1); });
-    const emp = $("#c_depts_empty");
-    if (emp) emp.style.display = rows.length === 0 ? "block" : "none";
-  };
-
-  $("#app").innerHTML = `<h2>Colleges</h2><p class="s">Each college is a separate scope: its users only see its own departments and data.</p><div class="card"><div class="row"><div><label>College name *</label><input id="c_n" placeholder="e.g. Adichunchanagiri Institute of Technology"></div><div><label>College code * (used in Event ID)</label><input id="c_c" placeholder="e.g. AIT"></div></div><div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--ln)"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px"><div><h3 style="margin:0; font-size:15px">Departments</h3><p class="s" style="margin:2px 0 0; font-size:13px">Each college can have multiple departments. Add the departments for this college below.</p></div><button type="button" class="g sm" id="c_add_dept_btn" style="margin:0">+ Add Department</button></div><div id="c_depts_list"></div><div id="c_depts_empty" class="empty" style="display:none; padding:14px; margin-bottom:12px; border:1px dashed var(--ln); border-radius:6px; font-size:13px">No departments added yet. Click "+ Add Department" to assign departments.</div></div>${canCre ? `<button id="c_g" style="margin-top:16px">Create college</button>` : ``}</div>
-  <div class="card">${S.colleges.length ? `<div class="tw"><table><tr><th>Name</th><th>Code</th><th>Link</th><th>Departments</th><th>Users</th><th>Action</th></tr>${S.colleges.map(c => `<tr><td>${esc(c.name)}</td><td><code>${esc(c.code)}</code></td><td><a class="clink" href="${collegeUrl(c)}" target="_blank" rel="noopener">${esc(collegeUrl(c))}</a></td><td><a href="#/depts/college/${c.id}">${S.depts.filter(d => d.college === c.id).length}</a></td><td>${S.users.filter(u => u.college === c.id).length}</td><td style="white-space:nowrap">${canMan || U.college === c.id ? `<a href="#/colleges/manage/${c.id}"><button class="sm">Manage</button></a> ` : ``}${isSU() ? `<button class="g sm" onclick="editCollege('${c.id}')">Edit</button> <button class="r sm" onclick="delCollege('${c.id}')">Delete</button>` : ``}</td></tr>`).join("")}</table></div>` : '<div class="empty">No colleges yet.</div>'}</div>`;
-
-  const attachDeptRowEvents = (row) => {
-    const rm = row.querySelector(".c-rm-dept");
-    if (rm) rm.onclick = () => { row.remove(); reindexDepts(); };
-  };
-  const addDeptRow = () => {
-    const list = $("#c_depts_list");
-    if (!list) return;
-    const count = list.querySelectorAll(".c-dept-row").length;
-    const temp = document.createElement("div");
-    temp.innerHTML = makeDeptRow(count + 1);
-    const newRow = temp.firstElementChild;
-    list.appendChild(newRow);
-    attachDeptRowEvents(newRow);
-    reindexDepts();
-  };
-
-  if ($("#c_add_dept_btn")) $("#c_add_dept_btn").onclick = () => addDeptRow();
-  addDeptRow();
+  $("#app").innerHTML = `<h2>Colleges</h2><p class="s">Each college is a separate scope: its users only see its own departments and data.</p>${canCre ? `<div class="card"><div class="row"><div><label>College name *</label><input id="c_n" placeholder="e.g. Adichunchanagiri Institute of Technology"></div><div><label>College code * (used in Event ID)</label><input id="c_c" placeholder="e.g. AIT"></div></div><button id="c_g" style="margin-top:16px">Create college</button></div>` : ``}
+  <div class="card">${S.colleges.length ? `<div class="tw"><table><tr><th>Name</th><th>Code</th><th>Link</th><th>Departments</th><th>Users</th><th>Action</th></tr>${S.colleges.map(c => `<tr><td>${esc(c.name)}</td><td><code>${esc(c.code)}</code></td><td><a class="clink" href="${collegeUrl(c)}" target="_blank" rel="noopener">${esc(collegeUrl(c))}</a></td><td><a href="#/depts/college/${c.id}">${S.depts.filter(d => d.college === c.id).length}</a></td><td>${S.users.filter(u => u.college === c.id).length}</td><td style="white-space:nowrap">${canMan || U.college === c.id ? `<a href="#/colleges/manage/${c.id}"><button class="sm">Manage</button></a> ` : ``}${canMan ? `<button class="g sm" onclick="editCollege('${c.id}')">Edit</button> ` : ``}${canMan || isSU() ? `<button class="r sm" onclick="delCollege('${c.id}')">Delete</button>` : ``}</td></tr>`).join("")}</table></div>` : '<div class="empty">No colleges yet.</div>'}</div>`;
 
   if ($("#c_g")) $("#c_g").onclick = async () => {
     const n = $("#c_n").value.trim(), k = $("#c_c").value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (!n || !k) return alert("College name and code required.");
     if (S.colleges.some(c => c.code === k)) return alert("Code already used.");
 
-    const deptRows = [...document.querySelectorAll(".c-dept-row")];
-    const deptData = [];
-    const allEmails = new Set(S.users.map(u => (u.email || "").toLowerCase()).filter(Boolean));
-    const newEmails = new Set();
-    const deptNamesSeen = new Set();
-
-    for (let i = 0; i < deptRows.length; i++) {
-      const row = deptRows[i];
-      const dn = row.querySelector(".cd_name").value.trim();
-      const dh = row.querySelector(".cd_hod").value.trim();
-      const u1n = row.querySelector(".cd_u1_name").value.trim();
-      const u1e = row.querySelector(".cd_u1_email").value.trim().toLowerCase();
-      const u2n = row.querySelector(".cd_u2_name").value.trim();
-      const u2e = row.querySelector(".cd_u2_email").value.trim().toLowerCase();
-
-      if (!dn && !dh && !u1n && !u1e && !u2n && !u2e) continue;
-      if (!dn) return alert(`Department #${i + 1} requires a name.`);
-      if (deptNamesSeen.has(dn.toLowerCase())) return alert(`Department "${dn}" is entered more than once for this college.`);
-      deptNamesSeen.add(dn.toLowerCase());
-
-      const accounts = [
-        { name: u1n, email: u1e },
-        { name: u2n, email: u2e }
-      ].filter(u => u.name || u.email);
-
-      if (accounts.some(u => !u.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u.email))) {
-        return alert(`Department "${dn}": enter both a full name and a valid email for each user.`);
-      }
-      if (accounts.length === 2 && accounts[0].email === accounts[1].email) {
-        return alert(`Department "${dn}": User 1 and User 2 need different email addresses.`);
-      }
-      for (const u of accounts) {
-        if (allEmails.has(u.email) || newEmails.has(u.email)) {
-          return alert(`Email "${u.email}" is already used by another account.`);
-        }
-        newEmails.add(u.email);
-      }
-      deptData.push({ name: dn, hod: dh, accounts });
-    }
-
     const cid = uid();
     S.colleges.push({ id: cid, name: n, code: k });
     S.eventConfs.push({ id: uid(), p1: "IQAC", p2: "BGS", seq: "01", fy: getFinYear(), college: cid });
-
-    deptData.forEach(d => {
-      const did = uid();
-      S.depts.push({
-        id: did,
-        college: cid,
-        name: d.name,
-        code: d.name.substring(0, 4).toUpperCase(),
-        hod: d.hod
-      });
-      d.accounts.forEach(user => {
-        S.users.push({
-          id: uid(),
-          ...user,
-          role: "dept",
-          college: cid,
-          dept: did,
-          pending: true
-        });
-      });
-    });
 
     $("#c_g").disabled = true;
     await save();
@@ -485,25 +397,96 @@ function colleges(a, id) {
 }
 const collegeUrl = c => (typeof window !== "undefined" ? window.location.origin : "https://acudigiverse.com") + "/" + String(c.code || "").toLowerCase();
 window.copyCollegeLink = id => { const c = S.colleges.find(x => x.id === id); if (!c) return; const url = collegeUrl(c); (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(() => alert("Link copied: " + url), () => prompt("Copy this link:", url)) };
-window.editCollege = id => { if (!isSU()) return; const c = S.colleges.find(x => x.id === id); if (!c) return; const n = prompt("College name:", c.name); if (n === null) return; const k = prompt("College code:", c.code); if (k === null) return; const kk = k.trim().toUpperCase().replace(/[^A-Z0-9]/g, ""); if (!n.trim() || !kk) return alert("Name and code required."); if (S.colleges.some(x => x.code === kk && x.id !== id)) return alert("Code already used."); c.name = n.trim(); c.code = kk; save(); route() };
-window.delCollege = id => { if (!isSU()) return; const c = S.colleges.find(x => x.id === id); if (!c) return; const nd = S.depts.filter(d => d.college === id).length, nu = S.users.filter(u => u.college === id).length; if (nu) return alert(`This college still has ${nu} user(s). Move or delete them first.`); if (!confirm(`Delete college "${c.name}" and its ${nd} department(s)? This cannot be undone.`)) return; S.depts = S.depts.filter(d => d.college !== id); S.eventConfs = S.eventConfs.filter(x => x.college !== id); S.colleges = S.colleges.filter(x => x.id !== id); save(); route() };
-window.editDept = id => {
+window.editCollege = async id => {
+  const canEdit = isSU() || isGlobal() || hasPerm('college', 'edit');
+  if (!canEdit) return alert("You do not have permission to edit this college.");
+  const c = S.colleges.find(x => x.id === id);
+  if (!c) return;
+  const n = prompt("College name:", c.name);
+  if (n === null) return;
+  const k = prompt("College code:", c.code);
+  if (k === null) return;
+  const kk = k.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!n.trim() || !kk) return alert("Name and code required.");
+  if (S.colleges.some(x => x.code === kk && x.id !== id)) return alert("Code already used.");
+  c.name = n.trim();
+  c.code = kk;
+  await save();
+  route();
+};
+window.delCollege = async id => {
+  const canDel = isSU() || isGlobal() || hasPerm('college', 'delete') || hasPerm('college', 'edit');
+  if (!canDel) return alert("You do not have permission to delete this college.");
+  const c = S.colleges.find(x => x.id === id);
+  if (!c) return;
+  const ds = S.depts.filter(d => d.college === id);
+  if (!confirm(`Delete college "${c.name}"? This will delete this college, its ${ds.length} department(s), and unassign/remove associated users and records. This cannot be undone.`)) return;
+
+  const deptIds = new Set(ds.map(d => d.id));
+
+  // Reset college/dept for Super Admin or current user; remove scoped college/dept users
+  (S.users || []).forEach(u => {
+    if (u.college === id || deptIds.has(u.dept)) {
+      if (u.id === U.id || u.role === 'su') {
+        u.college = null;
+        u.dept = null;
+      }
+    }
+  });
+  S.users = (S.users || []).filter(u => !((u.college === id || deptIds.has(u.dept)) && u.id !== U.id && u.role !== 'su'));
+
+  // Remove events, records, zeros, templates, eventConfs, depts, subs, and college
+  S.events = (S.events || []).filter(e => e.college !== id && !deptIds.has(e.dept));
+  S.recs = (S.recs || []).filter(r => r.college !== id && !deptIds.has(r.dept));
+  S.zeros = (S.zeros || []).filter(z => !deptIds.has(z.dept));
+  if (S.templates) S.templates = S.templates.filter(t => t.college !== id && !deptIds.has(t.dept));
+  if (S.subs) {
+    Object.keys(S.subs).forEach(k => {
+      if (k.startsWith(id + "|") || k === id) delete S.subs[k];
+    });
+  }
+  S.eventConfs = (S.eventConfs || []).filter(x => x.college !== id);
+  S.depts = (S.depts || []).filter(d => d.college !== id);
+  S.colleges = (S.colleges || []).filter(x => x.id !== id);
+
+  await save();
+  route();
+};
+window.editDept = async id => {
   const d = S.depts.find(x => x.id === id); if (!d) return;
   const canEdit = isSU() || (U && U.role === 'ca' && d.college === U.college) || hasPerm('dept', 'edit');
   if (!canEdit) return alert("You do not have permission to edit this department.");
   const n = prompt("Department name:", d.name); if (n === null) return;
   const h = prompt("Head of department:", d.hod || ""); if (h === null) return;
   if (!n.trim()) return alert("Name required.");
-  d.name = n.trim(); d.hod = h.trim(); save(); route();
+  d.name = n.trim(); d.hod = h.trim();
+  await save();
+  route();
 };
-window.delDept = id => {
+window.delDept = async id => {
   const d = S.depts.find(x => x.id === id); if (!d) return;
   const canDel = isSU() || (U && U.role === 'ca' && d.college === U.college) || hasPerm('dept', 'delete');
   if (!canDel) return alert("You do not have permission to delete this department.");
-  const nu = S.users.filter(u => u.dept === id).length;
-  if (nu) return alert(`This department still has ${nu} user(s). Move or delete them first.`);
-  if (!confirm(`Delete department "${d.name}"? This cannot be undone.`)) return;
-  S.depts = S.depts.filter(x => x.id !== id); save(); route();
+  if (!confirm(`Delete department "${d.name}" and remove associated records? This cannot be undone.`)) return;
+
+  // Reset dept for Super Admin or current user; remove scoped dept users
+  (S.users || []).forEach(u => {
+    if (u.dept === id) {
+      if (u.id === U.id || u.role === 'su') {
+        u.dept = null;
+      }
+    }
+  });
+  S.users = (S.users || []).filter(u => !(u.dept === id && u.id !== U.id && u.role !== 'su'));
+
+  S.events = (S.events || []).filter(e => e.dept !== id);
+  S.recs = (S.recs || []).filter(r => r.dept !== id);
+  S.zeros = (S.zeros || []).filter(z => z.dept !== id);
+  if (S.templates) S.templates = S.templates.filter(t => t.dept !== id);
+  S.depts = S.depts.filter(x => x.id !== id);
+
+  await save();
+  route();
 };
 function depts(a, fid) {
   const gl = isGlobal(); let cid = U.college; if (gl && a === "college" && fid) cid = fid; const list = gl ? (cid && a === "college" ? S.depts.filter(d => d.college === cid) : S.depts) : myDepts(); const su = isSU();
