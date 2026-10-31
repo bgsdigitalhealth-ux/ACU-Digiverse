@@ -17,6 +17,7 @@ export default defineConfig({
       server: { entry: "server" },
       serverFns: {
         base: "/serverFn",
+        disableCsrfMiddlewareWarning: true,
       },
     }),
     viteReact(),

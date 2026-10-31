@@ -6,8 +6,13 @@ function toWebRequest(eventOrReq: any): Request {
   if (eventOrReq instanceof Request) return eventOrReq;
   if (eventOrReq?.web?.request instanceof Request) return eventOrReq.web.request;
   const nodeReq = eventOrReq?.node?.req || eventOrReq;
-  const protocol = nodeReq.headers?.["x-forwarded-proto"] || "http";
-  const host = nodeReq.headers?.["host"] || "localhost";
+  
+  const rawProto = nodeReq.headers?.["x-forwarded-proto"];
+  const protocol = (Array.isArray(rawProto) ? rawProto[0] : (typeof rawProto === "string" ? rawProto.split(",")[0].trim() : "")) || (nodeReq.connection?.encrypted ? "https" : "https");
+  
+  const rawHost = nodeReq.headers?.["x-forwarded-host"] || nodeReq.headers?.["host"] || "acudigiverse.vercel.app";
+  const host = (Array.isArray(rawHost) ? rawHost[0] : (typeof rawHost === "string" ? rawHost.split(",")[0].trim() : "acudigiverse.vercel.app"));
+  
   const url = new URL(nodeReq.url || "/", `${protocol}://${host}`);
   const headers = new Headers();
   for (const [k, v] of Object.entries(nodeReq.headers || {})) {

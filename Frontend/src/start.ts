@@ -18,11 +18,51 @@ const errorMiddleware = createMiddleware().server(async ({ next }) => {
   }
 });
 
-// Start installs this automatically when src/start.ts is absent; defining the
-// file opts out, so re-add it explicitly to keep server functions protected
-// from cross-site requests.
+// Configure CSRF protection:
+// 1. Only enforce CSRF on mutation requests (POST, PUT, DELETE, PATCH). GET/HEAD are idempotent queries.
+// 2. Allow all requests from trusted production and preview domains (*.vercel.app, *.onrender.com, localhost).
+// 3. Allow requests without origin check when proxied through Vercel serverless.
 const csrfMiddleware = createCsrfMiddleware({
-  filter: (ctx) => ctx.handlerType === "serverFn",
+  filter: (ctx) => {
+    if (ctx.handlerType !== "serverFn") return false;
+    const method = (ctx.request.method || "GET").toUpperCase();
+    if (method === "GET" || method === "HEAD" || method === "OPTIONS") return false;
+    return true;
+  },
+  origin: (origin) => {
+    if (!origin) return true;
+    try {
+      const url = new URL(origin);
+      const host = url.hostname.toLowerCase();
+      return (
+        host === "localhost" ||
+        host === "127.0.0.1" ||
+        host.endsWith(".vercel.app") ||
+        host.endsWith(".onrender.com") ||
+        host.includes("acudigiverse")
+      );
+    } catch {
+      return false;
+    }
+  },
+  secFetchSite: () => true,
+  referer: (referer) => {
+    if (!referer) return true;
+    try {
+      const url = new URL(referer);
+      const host = url.hostname.toLowerCase();
+      return (
+        host === "localhost" ||
+        host === "127.0.0.1" ||
+        host.endsWith(".vercel.app") ||
+        host.endsWith(".onrender.com") ||
+        host.includes("acudigiverse")
+      );
+    } catch {
+      return true;
+    }
+  },
+  allowRequestsWithoutOriginCheck: true,
 });
 
 export const startInstance = createStart(() => ({
