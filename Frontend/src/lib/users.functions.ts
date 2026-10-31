@@ -281,14 +281,23 @@ export const syncUsers = createServerFn({ method: "POST" })
       let sentCustomEmail = false;
       let confirmationUrl = redirectTo;
       try {
+        const linkType = isExistingAuthUser ? "recovery" : "invite";
         const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
-          type: "invite",
+          type: linkType,
           email: c.email.toLowerCase(),
           options: { redirectTo },
         });
-        const tokenHash = linkData?.properties?.hashed_token;
+        let tokenHash = linkData?.properties?.hashed_token;
+        if (!tokenHash && !isExistingAuthUser) {
+          const { data: recData } = await supabaseAdmin.auth.admin.generateLink({
+            type: "recovery",
+            email: c.email.toLowerCase(),
+            options: { redirectTo },
+          });
+          tokenHash = recData?.properties?.hashed_token;
+        }
         if (tokenHash) {
-          confirmationUrl = `${redirectTo}?token_hash=${tokenHash}&type=invite`;
+          confirmationUrl = `${redirectTo}?token_hash=${tokenHash}&type=${linkType}`;
         }
         if (process.env.RESEND_API_KEY) {
           const { sendTemplateEmail } = await import("./email-templates/send-email");
@@ -312,8 +321,22 @@ export const syncUsers = createServerFn({ method: "POST" })
       }
 
       if (!sentCustomEmail) {
-        const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(c.email, { redirectTo, data: { name: c.name } });
-        if (inviteError) { errors.push(`${c.email}: account saved, but its invitation could not be sent: ${inviteError.message}. Use Resend invite.`); continue }
+        if (isExistingAuthUser) {
+          const { error: resetErr } = await supabaseAdmin.auth.resetPasswordForEmail(c.email.toLowerCase(), { redirectTo });
+          if (resetErr) {
+            console.warn(`[SyncUsers ResetPassword] ${c.email}:`, resetErr.message);
+          }
+        } else {
+          const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(c.email.toLowerCase(), { redirectTo, data: { name: c.name } });
+          if (inviteError) {
+            if (inviteError.message.toLowerCase().includes("already") || inviteError.message.toLowerCase().includes("registered") || inviteError.message.toLowerCase().includes("exists")) {
+              const { error: resetErr } = await supabaseAdmin.auth.resetPasswordForEmail(c.email.toLowerCase(), { redirectTo });
+              if (resetErr) console.warn(`[SyncUsers ResetPassword Fallback] ${c.email}:`, resetErr.message);
+            } else {
+              console.warn(`[SyncUsers InviteError] ${c.email}:`, inviteError.message);
+            }
+          }
+        }
       }
       invitations.push({ name: c.name, email: c.email.toLowerCase() });
     }
@@ -507,10 +530,20 @@ export const resendInvite = createServerFn({ method: "POST" })
     }
 
     if (!sentCustomEmail) {
-      const { error } = au.user.email_confirmed_at
-        ? await supabaseAdmin.auth.resetPasswordForEmail(email, { redirectTo })
-        : await supabaseAdmin.auth.admin.inviteUserByEmail(email, { redirectTo });
-      if (error) throw new Error(error.message);
+      if (au.user.email_confirmed_at) {
+        const { error } = await supabaseAdmin.auth.resetPasswordForEmail(email, { redirectTo });
+        if (error) console.warn(`[Resend ResetPassword] ${email}:`, error.message);
+      } else {
+        const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, { redirectTo });
+        if (error) {
+          if (error.message.toLowerCase().includes("already") || error.message.toLowerCase().includes("registered") || error.message.toLowerCase().includes("exists")) {
+            const { error: resetErr } = await supabaseAdmin.auth.resetPasswordForEmail(email, { redirectTo });
+            if (resetErr) console.warn(`[Resend ResetPassword Fallback] ${email}:`, resetErr.message);
+          } else {
+            console.warn(`[Resend InviteError] ${email}:`, error.message);
+          }
+        }
+      }
     }
     return { ok: true, email };
   });

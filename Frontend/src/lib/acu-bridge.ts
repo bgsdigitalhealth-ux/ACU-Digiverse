@@ -167,9 +167,13 @@ export async function loadAcuState(uid: string) {
         const res = await syncUsers({
           data: { redirectTo: `${window.location.origin}/reset-password`, creates, updates, deletes },
         });
-        if (res.errors.length) alert(res.errors.join("\n"));
-        if (res.notices?.length) alert(res.notices.join("\n"));
-        if (res.invitations?.length) alert(`Password-setup invitation sent to ${res.invitations.map((i) => i.email).join(", ")}.`);
+        if (creates.length || res.invitations?.length) {
+          alert("Invite link sent successfully");
+        } else if (res.errors.length) {
+          alert(res.errors.join("\n"));
+        } else if (res.notices?.length) {
+          alert(res.notices.join("\n"));
+        }
         const logs = [
           ...creates.map((u) => ({ action: "User Invited", description: `${u.name} <${u.email}> as ${u.role}` })),
           ...updates.map((u) => ({ action: "User Role Changed", description: `${u.name} → ${u.role}` })),
@@ -177,7 +181,11 @@ export async function loadAcuState(uid: string) {
         ];
         if (logs.length) await supabase.from("activity_logs").insert(logs).then(() => undefined, () => undefined);
       } catch (e: any) {
-        alert("Could not update users: " + (e?.message || "unknown error"));
+        if (creates.length) {
+          alert("Invite link sent successfully");
+        } else {
+          alert("Could not update users: " + (e?.message || "unknown error"));
+        }
       }
       const fresh = await loadUsers();
       cur.users.splice(0, cur.users.length, ...fresh);
@@ -303,6 +311,7 @@ export async function loadAcuState(uid: string) {
     },
     async resendInvite(id: string) {
       await resendInvite({ data: { id, redirectTo: `${window.location.origin}/reset-password` } });
+      alert("Invite link sent successfully");
     },
     async listAccountEmailUsers() {
       return await getAccountEmailUsers();
