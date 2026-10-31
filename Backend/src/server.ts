@@ -70,6 +70,17 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // Email Send endpoint
+    if (pathname === "/api/email/send" && req.method === "POST") {
+      const body = await parseBody(req);
+      const { templateName, to, options } = body;
+      const { sendTemplateEmail } = await import("./emails/send-email");
+      const result = await sendTemplateEmail(templateName, to, options);
+      res.writeHead(result.sent ? 200 : 400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(result));
+      return;
+    }
+
     // Cron Job: Report Reminder
     if (pathname === "/api/public/jobs/report-reminder" && req.method === "POST") {
       const { authenticateCronRequest } = await import("./integrations/supabase/cron-auth");
@@ -157,4 +168,3 @@ const server = http.createServer(async (req, res) => {
 server.listen(Number(PORT), "0.0.0.0", () => {
   console.log(`ACU Digiverse Backend API running on port ${PORT}`);
 });
-

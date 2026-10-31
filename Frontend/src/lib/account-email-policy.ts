@@ -33,8 +33,8 @@ export function validateAccountEmailRedirect(value: string) {
     throw new Error("Invalid password-setup address.");
   }
 
-  // Live deployed hosts (Render, Vercel) redirect directly to their own reset-password page
-  if (url.hostname.endsWith(".onrender.com") || url.hostname.endsWith(".vercel.app")) {
+  // Allowed hosts (Vercel, Render, custom domains) redirect directly to their own reset-password page
+  if (isAllowedHost) {
     return `${url.origin}/reset-password`;
   }
 

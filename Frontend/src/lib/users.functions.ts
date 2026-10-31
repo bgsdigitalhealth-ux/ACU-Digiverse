@@ -277,8 +277,44 @@ export const syncUsers = createServerFn({ method: "POST" })
         continue;
       }
       if (c.role === "dept" && college && dept) await keepReminderAssignee(college, dept, userId);
-      const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(c.email, { redirectTo, data: { name: c.name } });
-      if (inviteError) { errors.push(`${c.email}: account saved, but its invitation could not be sent: ${inviteError.message}. Use Resend invite.`); continue }
+
+      let sentCustomEmail = false;
+      let confirmationUrl = redirectTo;
+      try {
+        const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
+          type: "invite",
+          email: c.email.toLowerCase(),
+          options: { redirectTo },
+        });
+        const tokenHash = linkData?.properties?.hashed_token;
+        if (tokenHash) {
+          confirmationUrl = `${redirectTo}?token_hash=${tokenHash}&type=invite`;
+        }
+        if (process.env.RESEND_API_KEY) {
+          const { sendTemplateEmail } = await import("./email-templates/send-email");
+          const dMatch = deptsList.find((d: any) => d.id === dept);
+          const colMatch = (colleges || []).find((col: any) => col.id === college);
+          const emailRes = await sendTemplateEmail("invite", c.email.toLowerCase(), {
+            templateData: {
+              siteName: "ACU DigiVerse",
+              siteUrl: redirectTo.replace(/\/reset-password.*$/, ""),
+              confirmationUrl,
+              name: c.name,
+              role: c.role === "dept" ? "Department User" : c.role,
+              college: (colMatch?.data as any)?.name || college || undefined,
+              department: dMatch?.name || (dMatch?.data as any)?.name || c.deptName || dept || undefined,
+            },
+          });
+          if (emailRes.sent) sentCustomEmail = true;
+        }
+      } catch (linkErr) {
+        console.warn("[Invitation Link Generation]", linkErr);
+      }
+
+      if (!sentCustomEmail) {
+        const { error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(c.email, { redirectTo, data: { name: c.name } });
+        if (inviteError) { errors.push(`${c.email}: account saved, but its invitation could not be sent: ${inviteError.message}. Use Resend invite.`); continue }
+      }
       invitations.push({ name: c.name, email: c.email.toLowerCase() });
     }
 
@@ -441,10 +477,41 @@ export const resendInvite = createServerFn({ method: "POST" })
     if (accountError || !au.user) throw new Error("User not found.");
     if (au?.user?.last_sign_in_at) throw new Error("This account is already active.");
     const email = au?.user?.email || target.email;
-    const { error } = au.user.email_confirmed_at
-      ? await supabaseAdmin.auth.resetPasswordForEmail(email, { redirectTo })
-      : await supabaseAdmin.auth.admin.inviteUserByEmail(email, { redirectTo });
-    if (error) throw new Error(error.message);
+    let sentCustomEmail = false;
+    let confirmationUrl = redirectTo;
+    try {
+      const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
+        type: au.user.email_confirmed_at ? "recovery" : "invite",
+        email,
+        options: { redirectTo },
+      });
+      const tokenHash = linkData?.properties?.hashed_token;
+      if (tokenHash) {
+        confirmationUrl = `${redirectTo}?token_hash=${tokenHash}&type=${au.user.email_confirmed_at ? "recovery" : "invite"}`;
+      }
+      if (process.env.RESEND_API_KEY) {
+        const { sendTemplateEmail } = await import("./email-templates/send-email");
+        const emailRes = await sendTemplateEmail("invite", email, {
+          templateData: {
+            siteName: "ACU DigiVerse",
+            siteUrl: redirectTo.replace(/\/reset-password.*$/, ""),
+            confirmationUrl,
+            name: target.name || "Colleague",
+            role: "Staff",
+          },
+        });
+        if (emailRes.sent) sentCustomEmail = true;
+      }
+    } catch (linkErr) {
+      console.warn("[Resend Invite Link Generation]", linkErr);
+    }
+
+    if (!sentCustomEmail) {
+      const { error } = au.user.email_confirmed_at
+        ? await supabaseAdmin.auth.resetPasswordForEmail(email, { redirectTo })
+        : await supabaseAdmin.auth.admin.inviteUserByEmail(email, { redirectTo });
+      if (error) throw new Error(error.message);
+    }
     return { ok: true, email };
   });
 

@@ -11,10 +11,11 @@ import {
   Preview,
   Text,
 } from '@react-email/components'
+import type { TemplateEntry } from '../registry'
 
 interface InviteEmailProps {
-  siteName: string
-  siteUrl: string
+  siteName?: string
+  siteUrl?: string
   confirmationUrl: string
   name?: string
   role?: string
@@ -23,8 +24,8 @@ interface InviteEmailProps {
 }
 
 export const InviteEmail = ({
-  siteName,
-  siteUrl,
+  siteName = "ACU DigiVerse",
+  siteUrl = "https://acudigiverse.com",
   confirmationUrl,
   name,
   role,
@@ -61,6 +62,21 @@ export const InviteEmail = ({
     </Body>
   </Html>
 )
+
+export const template = {
+  component: InviteEmail,
+  subject: (data: Record<string, any>) => `${data.role || "Staff"} access invitation — ${data.siteName || "ACU DigiVerse"}`,
+  displayName: "Staff invitation",
+  previewData: {
+    siteName: "ACU DigiVerse",
+    siteUrl: "https://acudigiverse.com",
+    confirmationUrl: "https://acudigiverse.com/reset-password",
+    name: "Staff Colleague",
+    role: "Department User",
+    department: "Biotechnology",
+    college: "AIT"
+  }
+} satisfies TemplateEntry;
 
 export default InviteEmail
 

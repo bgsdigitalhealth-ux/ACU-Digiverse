@@ -41,15 +41,55 @@ function ResetPage() {
   const [err, setErr] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
     const hash = new URLSearchParams(window.location.hash.slice(1));
     const query = new URLSearchParams(window.location.search);
     const linkError = hash.get("error_description") || query.get("error_description");
     if (linkError) { setErr(friendly(linkError)); setState("invalid"); return; }
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => { if (session) setState("ready"); });
-    supabase.auth.getSession().then(({ data: s }) => s.session && setState("ready"));
+
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session && !cancelled) setState("ready");
+    });
+    supabase.auth.getSession().then(({ data: s }) => {
+      if (s.session && !cancelled) setState("ready");
+    });
+
+    const tokenHash = query.get("token_hash");
+    const code = query.get("code");
+    const type = (query.get("type") || "invite") as any;
+
+    if (tokenHash) {
+      supabase.auth.verifyOtp({ token_hash: tokenHash, type }).then(({ data: vData, error: vError }) => {
+        if (cancelled) return;
+        if (vError) {
+          setErr(friendly(vError.message));
+          setState("invalid");
+        } else if (vData.session) {
+          setState("ready");
+        }
+      });
+    } else if (code) {
+      supabase.auth.exchangeCodeForSession(code).then(({ data: cData, error: cError }) => {
+        if (cancelled) return;
+        if (cError) {
+          setErr(friendly(cError.message));
+          setState("invalid");
+        } else if (cData.session) {
+          setState("ready");
+        }
+      });
+    }
+
     // Give the email link a few seconds to sign in before saying it is invalid.
-    const t = setTimeout(() => setState((s) => (s === "checking" ? "invalid" : s)), 6000);
-    return () => { data.subscription.unsubscribe(); clearTimeout(t); };
+    const t = setTimeout(() => {
+      if (!cancelled) setState((s) => (s === "checking" ? "invalid" : s));
+    }, 8000);
+
+    return () => {
+      cancelled = true;
+      data.subscription.unsubscribe();
+      clearTimeout(t);
+    };
   }, []);
 
   async function submit(e: React.FormEvent) {
