@@ -1,5 +1,6 @@
 /** Desired branded sender; activation is controlled by verified managed-email setup. */
-export const ACCOUNT_EMAIL_SENDER = "info@acudigiverse.com";
+export const ACCOUNT_EMAIL_SENDER =
+  (typeof process !== "undefined" && process.env?.EMAIL_FROM) || "info@acudigiverse.com";
 export const ACCOUNT_PASSWORD_SETUP_URL = "https://acudigiverse.com/reset-password";
 
 export function canManageAccountEmails(role: string) {
