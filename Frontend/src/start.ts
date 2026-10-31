@@ -3,14 +3,22 @@ import { createStart, createCsrfMiddleware, createMiddleware } from "@tanstack/r
 import { renderErrorPage } from "./lib/error-page";
 import { attachSupabaseAuth } from "@/integrations/supabase/auth-attacher";
 
-const errorMiddleware = createMiddleware().server(async ({ next }) => {
+const errorMiddleware = createMiddleware().server(async ({ next, request }) => {
   try {
     return await next();
   } catch (error) {
     if (error != null && typeof error === "object" && "statusCode" in error) {
       throw error;
     }
-    console.error(error);
+    console.error("[StartServer Error]", error);
+    
+    // If the error occurred during an RPC serverFn request, rethrow so TanStack Start
+    // serializes it properly for the RPC client rather than sending an HTML webpage.
+    const isServerFn = request?.url?.includes("/serverFn/") || request?.headers?.get("x-tsr-serverFn") === "true";
+    if (isServerFn) {
+      throw error;
+    }
+
     return new Response(renderErrorPage(), {
       status: 500,
       headers: { "content-type": "text/html; charset=utf-8" },

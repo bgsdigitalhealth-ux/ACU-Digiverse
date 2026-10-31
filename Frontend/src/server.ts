@@ -4,7 +4,9 @@ const startHandler = createStartHandler(defaultStreamHandler);
 
 function toWebRequest(eventOrReq: any): Request {
   if (eventOrReq instanceof Request) return eventOrReq;
+  if (eventOrReq?.req instanceof Request) return eventOrReq.req;
   if (eventOrReq?.web?.request instanceof Request) return eventOrReq.web.request;
+  if (eventOrReq?.request instanceof Request) return eventOrReq.request;
   const nodeReq = eventOrReq?.node?.req || eventOrReq;
   
   const rawProto = nodeReq.headers?.["x-forwarded-proto"];
@@ -35,7 +37,5 @@ const handler = async (eventOrReq: any) => {
   const req = toWebRequest(eventOrReq);
   return startHandler(req);
 };
-
-(handler as any).fetch = (req: Request) => startHandler(toWebRequest(req));
 
 export default handler;

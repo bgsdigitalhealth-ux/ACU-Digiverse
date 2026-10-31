@@ -4,8 +4,8 @@ import { listEventResources } from "@/lib/event-resources.functions";
 export const eventResourcesQuery = queryOptions({
   queryKey: ["public-event-resources"],
   queryFn: () => listEventResources(),
-  staleTime: 30_000,
-  refetchInterval: 10_000,
+  staleTime: 60_000,
+  refetchInterval: 30_000,
 });
 
 export type EventResource = Awaited<ReturnType<typeof listEventResources>>[number];
