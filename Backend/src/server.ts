@@ -40,10 +40,33 @@ const server = http.createServer(async (req, res) => {
   const pathname = reqUrl.pathname;
 
   try {
-    // Health check
-    if (pathname === "/health" || pathname === "/api/health") {
+    // Root service welcome & health check
+    if (pathname === "/" || pathname === "/api" || pathname === "/health" || pathname === "/api/health") {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ status: "ok", service: "ACU Digiverse Backend API", timestamp: new Date().toISOString() }));
+      res.end(
+        JSON.stringify(
+          {
+            status: "online",
+            service: "ACU DigiVerse Backend API",
+            version: "1.0.0",
+            timestamp: new Date().toISOString(),
+            endpoints: {
+              health: "/health",
+              jobs: {
+                reportReminder: "POST /api/public/jobs/report-reminder",
+              },
+              admin: {
+                bootstrap: "POST /api/admin/bootstrap",
+              },
+              email: {
+                send: "POST /api/email/send",
+              },
+            },
+          },
+          null,
+          2
+        )
+      );
       return;
     }
 
