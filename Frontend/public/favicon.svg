@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#6B1D2F"/>
+  <circle cx="32" cy="32" r="28" fill="none" stroke="#D4AF37" stroke-width="2"/>
+  <!-- Academic Graduation Cap / Book Icon -->
+  <polygon points="32,16 52,26 32,36 12,26" fill="#D4AF37"/>
+  <path d="M22,32 v11 c0,5.5 4.5,10 10,10 s10,-4.5 10,-10 v-11" fill="none" stroke="#D4AF37" stroke-width="3"/>
+  <line x1="48" y1="28" x2="48" y2="44" stroke="#D4AF37" stroke-width="2.5"/>
+  <circle cx="48" cy="45" r="2" fill="#D4AF37"/>
+</svg>
+

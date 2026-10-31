@@ -1,0 +1,2 @@
+REVOKE EXECUTE ON FUNCTION public.has_role(uuid, text), public.my_college(), public.my_dept(), public.is_global(), public.in_my_scope(text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.has_role(uuid, text), public.my_college(), public.my_dept(), public.is_global(), public.in_my_scope(text, text) TO authenticated;

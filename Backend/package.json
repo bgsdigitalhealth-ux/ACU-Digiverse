@@ -1,0 +1,32 @@
+{
+  "name": "acu-digiverse-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --import tsx src/server.ts",
+    "dev": "node --import tsx --watch src/server.ts",
+    "db:push": "drizzle-kit push",
+    "db:migrate": "drizzle-kit migrate",
+    "db:generate": "drizzle-kit generate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@react-email/components": "^1.0.12",
+    "@react-email/render": "^2.0.10",
+    "@supabase/supabase-js": "^2.117.2",
+    "@tanstack/react-start": "1.168.60",
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.45.3",
+    "postgres": "^3.4.9",
+    "react": "^19.2.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.16.5",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3"
+  }
+}
+

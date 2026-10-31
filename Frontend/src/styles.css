@@ -1,0 +1,516 @@
+@import "tailwindcss" source(none);
+@import "tw-animate-css";
+@source "../src";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design system definition.
+ *
+ * The @theme inline block maps CSS custom properties to Tailwind utility
+ * classes (e.g. --color-primary -> bg-primary, text-primary).
+ *
+ * The :root and .dark blocks define the actual color values using oklch.
+ * Colors use the ACU palette hex values.
+ *
+ * To add a new semantic color:
+ * 1. Add the variable to :root (light value) and .dark (dark value)
+ * 2. Register it in @theme inline as --color-<name>: var(--<name>)
+ */
+
+@theme inline {
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --radius: 0.5rem;
+  --background: #FFFFFF;
+  --foreground: #1F2937;
+  --card: #FFFFFF;
+  --card-foreground: #1F2937;
+  --popover: #FFFFFF;
+  --popover-foreground: #1F2937;
+  --primary: #8B1E3F;
+  --primary-foreground: #FFFFFF;
+  --secondary: #6D1733;
+  --secondary-foreground: #FFFFFF;
+  --muted: #F5F5F5;
+  --muted-foreground: #6B7280;
+  --accent: #D4A017;
+  --accent-foreground: #000000;
+  --destructive: #6D1733;
+  --destructive-foreground: #FFFFFF;
+  --border: color-mix(in srgb, var(--foreground) 14%, var(--background));
+  --input: color-mix(in srgb, var(--foreground) 25%, var(--background));
+  --ring: #D4A017;
+  --chart-1: #8B1E3F;
+  --chart-2: #D4A017;
+  --chart-3: #1F2937;
+  --chart-4: #6D1733;
+  --chart-5: #6B7280;
+  --sidebar: #1F2937;
+  --sidebar-foreground: #FFFFFF;
+  --sidebar-primary: #8B1E3F;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #D4A017;
+  --sidebar-accent-foreground: #000000;
+  --sidebar-border: rgba(212, 160, 23, 0.35);
+  --sidebar-ring: #D4A017;
+  --shadow-subtle: 0 2px 12px color-mix(in srgb, var(--foreground) 5%, transparent);
+  --shadow-elevated: 0 16px 48px color-mix(in srgb, var(--foreground) 9%, transparent);
+}
+
+.dark {
+  --background: #1F2937;
+  --foreground: #FFFFFF;
+  --card: #000000;
+  --card-foreground: #FFFFFF;
+  --popover: #000000;
+  --popover-foreground: #FFFFFF;
+  --primary: #D4A017;
+  --primary-foreground: #000000;
+  --secondary: #6D1733;
+  --secondary-foreground: #FFFFFF;
+  --muted: #1F2937;
+  --muted-foreground: #F5F5F5;
+  --accent: #D4A017;
+  --accent-foreground: #000000;
+  --destructive: #6D1733;
+  --destructive-foreground: #FFFFFF;
+  --border: rgba(212, 160, 23, 0.32);
+  --input: rgba(255, 255, 255, 0.18);
+  --ring: #D4A017;
+  --chart-1: #8B1E3F;
+  --chart-2: #D4A017;
+  --chart-3: #1F2937;
+  --chart-4: #6D1733;
+  --chart-5: #6B7280;
+  --sidebar: #1F2937;
+  --sidebar-foreground: #FFFFFF;
+  --sidebar-primary: #8B1E3F;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #D4A017;
+  --sidebar-accent-foreground: #000000;
+  --sidebar-border: rgba(212, 160, 23, 0.35);
+  --sidebar-ring: #D4A017;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-serif);
+  }
+}
+
+/* Public homepage theme is isolated from the staff workspace. */
+.digiverse-home {
+  --background: #FFFFFF;
+  --foreground: #1F2937;
+  --primary: #8B1E3F;
+  --primary-foreground: #FFFFFF;
+  --secondary: #6D1733;
+  --secondary-foreground: #FFFFFF;
+  --accent: #D4A017;
+  --accent-foreground: #000000;
+  --muted: #F5F5F5;
+  --muted-foreground: #6B7280;
+  --border: color-mix(in srgb, var(--foreground) 14%, var(--background));
+  --input: color-mix(in srgb, var(--foreground) 25%, var(--background));
+  --ring: #D4A017;
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+}
+
+.digiverse-home h1,
+.digiverse-home h2,
+.digiverse-home .grandeur-number {
+  font-family: var(--font-serif);
+}
+
+.digiverse-home .grandeur-pillar-title {
+  font-family: var(--font-sans);
+}
+
+.grandeur-welcome {
+  animation: grandeur-arrive 650ms ease-out both;
+}
+
+.home-calendar {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  width: 168px;
+  height: 184px;
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 2;
+}
+
+@media (max-width: 639px) {
+  .home-calendar {
+    top: 18px;
+    right: 10px;
+    width: 94px;
+    height: 108px;
+  }
+
+  .welcome-university-label {
+    max-width: calc(100% - 82px);
+  }
+}
+
+.digiverse-home .event-title {
+  font-family: var(--font-serif);
+}
+
+.event-calendar-day::after {
+  content: "";
+  position: absolute;
+  bottom: 3px;
+  left: calc(50% - 2px);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.event-month-calendar button {
+  cursor: pointer;
+}
+
+.event-slide {
+  animation: event-arrive 600ms ease-out both;
+}
+
+.event-slide-layout {
+  min-height: 300px;
+}
+
+@keyframes event-arrive {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 639px) {
+  .event-slide-layout {
+    min-height: 480px;
+  }
+}
+
+@keyframes grandeur-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .grandeur-welcome,
+  .event-slide {
+    animation: none;
+  }
+}
+
+/* Heritage: clean full-width university bands, restrained maroon accents. */
+.digiverse-home {
+  padding: 0;
+  max-width: none;
+  margin: 0;
+}
+
+.grandeur-welcome {
+  background: var(--secondary);
+  border-bottom: 3px solid var(--accent);
+}
+
+.heritage-welcome-content {
+  max-width: 900px;
+}
+
+.heritage-brand {
+  font-weight: 700;
+}
+
+.heritage-heading {
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.heritage-event-image {
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--muted);
+}
+
+.heritage-resource {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: 2px;
+  box-shadow: var(--shadow-subtle);
+}
+
+.heritage-pillar {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+}
+
+.heritage-footer {
+  background: var(--foreground);
+  color: var(--primary-foreground);
+}
+
+.heritage-footer p {
+  color: var(--primary-foreground);
+}
+
+.heritage-footer p span {
+  color: var(--accent);
+}
+
+/* Reference-inspired public homepage; staff screens retain their own styling. */
+.grandeur-welcome {
+  min-height: 640px;
+  isolation: isolate
+}
+
+.digiverse-cover {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  z-index: -1
+}
+
+.digiverse-masthead {
+  padding: 24px 48px;
+  border-bottom: 1px solid color-mix(in srgb, var(--primary-foreground) 16%, transparent);
+  margin: 0 32px
+}
+
+.digiverse-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid color-mix(in srgb, var(--accent) 65%, transparent);
+  color: var(--accent);
+  border-radius: 4px
+}
+
+.heritage-welcome-content {
+  width: 56%;
+  max-width: 680px;
+  padding: 52px 0 42px;
+  margin-left: 80px
+}
+
+.welcome-description {
+  max-width: 480px
+}
+
+.digiverse-hero-foot {
+  padding: 20px 0;
+  margin: 0 80px
+}
+
+.home-calendar {
+  top: 108px;
+  right: 64px;
+  width: 158px;
+  height: 172px
+}
+
+.digiverse-home button.home-calendar,
+.digiverse-home button.home-calendar:hover,
+.digiverse-home button.home-calendar:active,
+.digiverse-home button.home-calendar[data-state="open"] {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+  margin: 0
+}
+
+.digiverse-home button.home-calendar:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px
+}
+
+.digiverse-ecosystem .heritage-pillar {
+  border-top: 2px solid var(--accent)
+}
+
+@media(min-width:1600px) {
+  .grandeur-welcome {
+    min-height: 680px
+  }
+
+  .heritage-welcome-content {
+    padding-top: 64px;
+    padding-bottom: 64px
+  }
+
+  .digiverse-cover {
+    object-position: center 58%
+  }
+}
+
+@media(min-width:640px) and (max-width:1023px) {
+  .digiverse-masthead {
+    margin: 0 24px;
+    padding: 20px 24px
+  }
+
+  .heritage-welcome-content {
+    margin-left: 48px;
+    width: 58%;
+    padding-top: 48px
+  }
+
+  .home-calendar {
+    right: 30px;
+    width: 138px;
+    height: 154px
+  }
+
+  .digiverse-hero-foot {
+    margin: 0 48px
+  }
+
+  .digiverse-cover {
+    object-position: 56% center
+  }
+}
+
+@media(max-width:639px) {
+  .grandeur-welcome {
+    min-height: 710px
+  }
+
+  .digiverse-masthead {
+    margin: 0 20px;
+    padding: 18px 0;
+    gap: 8px
+  }
+
+  .digiverse-signin {
+    font-size: 12px;
+    padding: 8px;
+    gap: 5px
+  }
+
+  .digiverse-cover {
+    object-fit: cover;
+    object-position: 72% bottom;
+    height: 100%;
+    opacity: .28
+  }
+
+  .heritage-welcome-content {
+    width: auto;
+    max-width: none;
+    margin: 0;
+    padding: 38px 24px 34px
+  }
+
+  .welcome-university-label {
+    max-width: calc(100% - 118px);
+    font-size: 10px;
+    line-height: 1.6;
+    margin-bottom: 34px
+  }
+
+  .heritage-brand {
+    max-width: 100%;
+    font-size: 48px;
+    line-height: 1.12
+  }
+
+  .welcome-description {
+    max-width: 330px
+  }
+
+  .home-calendar {
+    top: 100px;
+    right: 14px;
+    width: 112px;
+    height: 126px
+  }
+
+  .digiverse-hero-foot {
+    margin: 0 24px;
+    padding: 20px 0
+  }
+}
