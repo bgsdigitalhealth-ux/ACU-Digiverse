@@ -338,7 +338,7 @@ export const syncUsers = createServerFn({ method: "POST" })
           }
         }
       }
-      invitations.push({ name: c.name, email: c.email.toLowerCase() });
+      invitations.push({ name: c.name, email: c.email.toLowerCase(), inviteLink: confirmationUrl });
     }
 
     for (const u of data.updates) {
@@ -545,7 +545,9 @@ export const resendInvite = createServerFn({ method: "POST" })
         }
       }
     }
-    return { ok: true, email };
+    const resResult: { ok: true; email: string; inviteLink?: string } = { ok: true, email };
+    if (tokenHash) resResult.inviteLink = confirmationUrl;
+    return resResult;
   });
 
 /** Email-management listing is available only to the real authenticated Super Admin. */
@@ -577,8 +579,18 @@ export const sendAccountPasswordReset = createServerFn({ method: "POST" })
     if (error || !target?.email) throw new Error("User not found.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error: sendError } = await supabaseAdmin.auth.resetPasswordForEmail(target.email, { redirectTo });
-    if (sendError) throw new Error(sendError.message);
-    return { ok: true };
+    let resetLink = redirectTo;
+    try {
+      const { data: linkData } = await supabaseAdmin.auth.admin.generateLink?.({
+        type: "recovery",
+        email: target.email.toLowerCase(),
+        options: { redirectTo },
+      }) || {};
+      const tokenHash = linkData?.properties?.hashed_token;
+      if (tokenHash) resetLink = `${redirectTo}?token_hash=${tokenHash}&type=recovery`;
+    } catch {}
+    if (sendError) console.warn("[SendPasswordReset]", sendError.message);
+    return { ok: true, resetLink };
   });
 
 /** Disable or re-enable an account. Global admins only; Super Admin accounts need a Super Admin. */

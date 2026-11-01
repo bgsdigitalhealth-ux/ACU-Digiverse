@@ -167,7 +167,11 @@ export async function loadAcuState(uid: string) {
         const res = await syncUsers({
           data: { redirectTo: `${window.location.origin}/reset-password`, creates, updates, deletes },
         });
-        if (creates.length || res.invitations?.length) {
+        const links = (res.invitations || []).map((i: any) => i.inviteLink).filter(Boolean);
+        if (links.length) {
+          try { navigator.clipboard?.writeText(links[0]); } catch {}
+          alert(`Invite link sent successfully.\n\nDirect activation link (copied to clipboard):\n${links[0]}`);
+        } else if (creates.length || res.invitations?.length) {
           alert("Invite link sent successfully");
         } else if (res.errors.length) {
           alert(res.errors.join("\n"));
@@ -310,14 +314,28 @@ export async function loadAcuState(uid: string) {
       return r;
     },
     async resendInvite(id: string) {
-      await resendInvite({ data: { id, redirectTo: `${window.location.origin}/reset-password` } });
-      alert("Invite link sent successfully");
+      const res = await resendInvite({ data: { id, redirectTo: `${window.location.origin}/reset-password` } });
+      const link = (res as any)?.inviteLink;
+      if (link) {
+        try { navigator.clipboard?.writeText(link); } catch {}
+        alert(`Invite link sent successfully.\n\nDirect activation link (copied to clipboard):\n${link}`);
+      } else {
+        alert("Invite link sent successfully");
+      }
     },
     async listAccountEmailUsers() {
       return await getAccountEmailUsers();
     },
     async sendAccountPasswordReset(id: string) {
-      return await sendAccountPasswordReset({ data: { id, redirectTo: `${window.location.origin}/reset-password` } });
+      const res = await sendAccountPasswordReset({ data: { id, redirectTo: `${window.location.origin}/reset-password` } });
+      const link = (res as any)?.resetLink;
+      if (link) {
+        try { navigator.clipboard?.writeText(link); } catch {}
+        alert(`Password reset link sent successfully.\n\nDirect recovery link (copied to clipboard):\n${link}`);
+      } else {
+        alert("Password reset email sent successfully");
+      }
+      return res;
     },
     async generateArticle(eventId: string, notes: string) {
       return await generateEventArticle({ data: { eventId, notes } });
