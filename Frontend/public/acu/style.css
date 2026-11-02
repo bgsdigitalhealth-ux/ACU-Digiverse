@@ -38,8 +38,7 @@ html{scroll-padding-top:env(safe-area-inset-top,0px)}*{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 'Inter',system-ui,-apple-system,"Segoe UI",sans-serif}
 .app-layout { display: flex; min-height: 100vh; }
 .app-layout.acu-workspace{min-height:100vh}
-.acu-workspace main{padding:28px 32px;max-width:none;min-width:0;width:0;margin:0}
-@media (max-width:768px){.acu-workspace main{padding:20px 16px}}
+.acu-workspace main{flex:1;min-width:0;width:100%;max-width:1200px;padding:28px 32px;margin:0 auto;box-sizing:border-box}
 .sidebar { width: 260px; background: var(--sidebar-bg); color: var(--on-dark); display: flex; flex-direction: column; border-right: 1px solid var(--sidebar-bg); flex-shrink: 0; }
 .brand { padding: 24px 20px 20px; }
 .brand h1 { margin: 0; font-size: 18px; color: var(--on-dark); font-weight: 700; }
@@ -281,28 +280,346 @@ th,td{padding:13px 16px}
 .event-article-actions button.g:hover{background:var(--ac2);color:var(--ac)}
 .bv-link{color:var(--ac);background:var(--surface)}
 .bv-link:hover{border-color:var(--ac)}
-@media(max-width:900px){.login-left{padding:32px 24px;min-height:230px}.login-brand h1{font-size:28px}.login-right{width:100%;padding:32px 24px}.login-right-inner{padding:24px 0}}
-@media(max-width:768px){.acu-workspace main{padding:24px 16px}.back-header h2,h2{font-size:24px}.sidebar{width:220px}.brand{padding:22px 16px}.brand h1{font-size:20px}}
-@media(max-width:540px){.acu-workspace{flex-direction:column}.acu-workspace .sidebar{width:100%}.acu-workspace nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px}.acu-workspace nav a{padding:10px 12px;min-width:0;overflow-wrap:anywhere}.acu-workspace .brand{padding:18px 20px}.acu-workspace #who{padding:16px 20px}.bv-navtitle{grid-column:1/-1}.back-stats{gap:16px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 
-/* Workspace dimensions adapt without squeezing table names and controls. */
-.acu-workspace .sidebar{width:244px;min-width:0}
-.acu-workspace .card{padding:20px;margin-bottom:20px}
-.acu-workspace .tw{max-width:calc(100% + 40px);margin:10px -20px -20px;padding:0 20px 20px}
-.acu-workspace .tabs{flex-wrap:wrap}
-.acu-workspace td{overflow-wrap:anywhere}
-.department-table{table-layout:fixed;min-width:700px}
-.department-table th:first-child{width:27%}
-.department-table td{vertical-align:middle}
-.department-table th:last-child{width:150px}
-.department-actions{white-space:normal}
-.department-actions button.sm{margin:3px 4px 3px 0}
-.department-assign{display:block;margin-top:6px;font-size:12px;font-weight:600;color:var(--ac);text-underline-offset:3px}
-.assignment-form{max-width:640px}
-@media(min-width:1600px){.acu-workspace main{padding:36px 48px}.acu-workspace .sidebar{width:260px}}
-@media(min-width:541px) and (max-width:1100px){.acu-workspace .sidebar{width:220px}.acu-workspace main{padding:24px}.acu-workspace .brand{padding:24px 18px}}
-@media(max-width:540px){.acu-workspace .sidebar{width:100%}.acu-workspace main{width:100%;padding:20px 16px}.acu-workspace .card{padding:16px}.acu-workspace .tw{max-width:calc(100% + 32px);margin:10px -16px -16px;padding:0 16px 16px}}
+/* Mobile Navigation Topbar & Overlay */
+.mobile-topbar { display: none; }
+.mobile-nav-overlay { display: none; }
+.sidebar-close-btn { display: none !important; }
+.brand-header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; width: 100%; }
+
+/* Workspace Dimensions & Layout */
+.acu-workspace .sidebar { width: 260px; min-width: 0; flex-shrink: 0; }
+.acu-workspace main { flex: 1; min-width: 0; width: 100%; max-width: 1200px; padding: 28px 32px; box-sizing: border-box; }
+.acu-workspace .card { padding: 22px; margin-bottom: 20px; border-radius: 8px; }
+.acu-workspace .tabs { flex-wrap: wrap; }
+
+/* Table Text & Layout Formatting - Fix mid-word broken text */
+.acu-workspace td, .acu-workspace th {
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+  word-wrap: normal !important;
+  hyphens: none !important;
+}
+.acu-workspace code, .acu-workspace .clink, .acu-workspace .break-anywhere {
+  overflow-wrap: anywhere !important;
+  word-break: break-all !important;
+}
+
+/* Scrollable Table Wrapper */
+.acu-workspace .tw {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  margin: 14px 0 0 !important;
+  padding: 0 0 10px 0 !important;
+  box-sizing: border-box !important;
+}
+.acu-workspace .tw table {
+  width: 100% !important;
+  min-width: 520px !important;
+  border-collapse: collapse;
+}
+
+/* Specific column styling for Monthly Reporting and standard tables */
+.acu-workspace .table-hover th.w-1,
+.acu-workspace .table-hover td.w-1 {
+  width: 44px !important;
+  min-width: 44px !important;
+  text-align: center !important;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
+.acu-workspace .table-hover td:nth-child(2) {
+  min-width: 170px !important;
+  font-weight: 500;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+}
+.acu-workspace .table-hover td:nth-child(3) {
+  min-width: 125px !important;
+  white-space: nowrap !important;
+}
+.acu-workspace .table-hover td.text-right,
+.acu-workspace .table-hover th.text-right {
+  min-width: 110px !important;
+  width: 110px !important;
+  text-align: right !important;
+  white-space: nowrap !important;
+}
+
+/* Protect Action buttons from squishing or breaking text across characters */
+button, button.sm, button.g, button.r, button.k,
+.tw button, .department-actions button, .table-hover button, td button, a button {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  word-wrap: normal !important;
+  min-width: max-content !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
+  height: auto;
+  box-sizing: border-box !important;
+}
+button.sm {
+  height: 32px !important;
+  padding: 6px 14px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+  line-height: 1.2 !important;
+  margin: 2px !important;
+}
+
+.department-table { table-layout: fixed; min-width: 700px; }
+.department-table th:first-child { width: 27%; }
+.department-table td { vertical-align: middle; }
+.department-table th:last-child { width: 150px; }
+.department-actions { white-space: normal; }
+.department-assign { display: block; margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--ac); text-underline-offset: 3px; }
+.assignment-form { max-width: 640px; }
+
+/* Tablet & Mobile Navigation Breakpoint (<= 900px) */
+@media (max-width: 900px) {
+  .mobile-topbar {
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+    height: 58px;
+    padding: 0 16px;
+    background: var(--sidebar-bg);
+    color: var(--on-dark);
+    position: sticky;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    border-bottom: 2px solid var(--gold);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  }
+  body.is-login .mobile-topbar { display: none !important; }
+
+  .mobile-hamburger-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    margin: 0;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 8px;
+    color: var(--on-dark);
+    cursor: pointer;
+  }
+  .mobile-hamburger-btn:active { transform: scale(0.96); }
+
+  .mobile-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .mobile-brand-title {
+    font-family: 'Playfair Display', Georgia, serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--on-dark);
+    letter-spacing: 0.2px;
+    line-height: 1.2;
+  }
+  .mobile-brand-sub {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--gold);
+    letter-spacing: 0.3px;
+    line-height: 1.2;
+  }
+
+  .mobile-user-pill {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--ac);
+    color: var(--on-dark);
+    font-weight: 700;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid var(--gold);
+  }
+
+  .sidebar-close-btn {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    margin: 0;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 8px;
+    color: var(--on-dark);
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .mobile-nav-overlay {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 1040;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.28s ease;
+  }
+  .mobile-nav-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .app-layout.acu-workspace {
+    display: block !important;
+    min-height: calc(100vh - 58px);
+  }
+
+  .acu-workspace .sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    width: 290px !important;
+    max-width: 86vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    z-index: 1050 !important;
+    transform: translateX(-100%) !important;
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s ease !important;
+    box-shadow: none !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    background: var(--sidebar-bg) !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+  }
+  .acu-workspace .sidebar.open {
+    transform: translateX(0) !important;
+    box-shadow: 14px 0 45px rgba(0, 0, 0, 0.55) !important;
+  }
+
+  .acu-workspace nav {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px !important;
+    padding: 10px 0 !important;
+  }
+  .acu-workspace nav a {
+    padding: 12px 20px !important;
+    font-size: 14px !important;
+    white-space: nowrap !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+
+  .acu-workspace main {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 20px 16px 48px !important;
+    box-sizing: border-box !important;
+  }
+
+  .login-left { padding: 32px 24px; min-height: 230px; }
+  .login-brand h1 { font-size: 28px; }
+  .login-right { width: 100%; padding: 32px 24px; }
+  .login-right-inner { padding: 24px 0; }
+}
+
+/* Small Screen & Phone Breakpoint (<= 640px) */
+@media (max-width: 640px) {
+  .row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 14px !important;
+    width: 100% !important;
+  }
+  .row > div {
+    width: 100% !important;
+  }
+
+  input, select, textarea,
+  .l-input-wrap input, .l-input-wrap select,
+  .approval-table input, .approval-table select, .approval-table textarea {
+    font-size: 16px !important;
+    min-height: 44px !important;
+    padding: 10px 14px !important;
+    border-radius: 8px !important;
+    box-sizing: border-box !important;
+  }
+
+  label {
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: var(--tx) !important;
+    margin: 10px 0 4px !important;
+  }
+
+  h2, .back-header h2 {
+    font-size: 21px !important;
+    line-height: 1.3 !important;
+    margin: 0 0 6px !important;
+    padding-bottom: 6px !important;
+  }
+  h3 { font-size: 16px !important; }
+  p.s {
+    font-size: 13px !important;
+    line-height: 1.5 !important;
+    margin-bottom: 16px !important;
+  }
+
+  .card, .acu-workspace .card {
+    padding: 16px !important;
+    border-radius: 10px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .b {
+    padding: 4px 8px !important;
+    font-size: 11px !important;
+  }
+
+  .approval-paper {
+    padding: 16px 12px !important;
+  }
+  .approval-letterhead {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+  .approval-pair, .approval-dates {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+  .approval-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+  }
+
+  .back-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+  }
+}
 /* Events Organized article typography (screen, PDF, print). */
 .event-article-paper,.article-export-content{font-family:'Source Serif 4',Georgia,serif!important;color:var(--tx)!important;font-size:16px;line-height:1.65}
 .event-article-paper h2,.article-export-content h2{font-family:'Libre Baskerville',Georgia,serif!important;font-weight:700;color:var(--maroon-deep)!important;text-align:center;letter-spacing:0;padding-bottom:10px;border-bottom:2px solid var(--gold)}
@@ -370,7 +687,7 @@ th,td{padding:13px 16px}
 .approval-actions button{margin:0}.approval-actions a{color:var(--ac);font-size:14px}
 .approval-format{max-width:360px;margin-bottom:20px}
 @media(max-width:900px){.approval-paper{padding:20px 0}.approval-table th{width:28%}.approval-table th,.approval-table td{padding:10px}.approval-pair,.approval-dates{grid-template-columns:minmax(0,1fr)}.approval-letterhead>div{font-size:21px}}
-@media(max-width:540px){.approval-letterhead{flex-direction:column;align-items:flex-start;gap:10px}.approval-meta{font-size:12px}.approval-table th{width:32%;font-size:12px}.approval-table td,.approval-table th{padding:10px 8px}.approval-table input,.approval-table textarea,.approval-table select{font-size:13px;padding:8px}.approval-paper h2{font-size:19px}}
+@media(max-width:540px){.approval-letterhead{flex-direction:column;align-items:flex-start;gap:10px}.approval-meta{font-size:12px}.approval-table th{width:32%;font-size:12px}.approval-table td,.approval-table th{padding:10px 8px}.approval-table input,.approval-table textarea,.approval-table select{font-size:16px;padding:8px}.approval-paper h2{font-size:19px}}
 @media print{
   body.printing-approval .acu-workspace main{width:100%;max-width:none;margin:0;padding:0;overflow:visible}
   body.printing-approval #app>*{display:none!important}

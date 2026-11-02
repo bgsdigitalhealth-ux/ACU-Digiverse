@@ -21,6 +21,7 @@ function AcuApp() {
   const { user } = Route.useRouteContext();
   const [error, setError] = useState("");
   const [importable, setImportable] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,7 +38,7 @@ function AcuApp() {
         setImportable(!!global && !!localStorage.getItem("acu_v2") && !localStorage.getItem("acu_v2_imported"));
         if (!document.querySelector("script[data-acu-app]")) {
           const s = document.createElement("script");
-          s.src = "/acu/app.js?v=20261031-dynamic-colleges";
+          s.src = "/acu/app.js?v=20261102-responsive-drawer";
           s.async = false;
           s.setAttribute("data-acu-app", "1");
           document.body.appendChild(s);
@@ -51,6 +52,12 @@ function AcuApp() {
     };
   }, [user.id]);
 
+  useEffect(() => {
+    const handleClose = () => setMobileNavOpen(false);
+    window.addEventListener("hashchange", handleClose);
+    return () => window.removeEventListener("hashchange", handleClose);
+  }, []);
+
   async function runImport() {
     if (!confirm("Copy the colleges, departments, events and reports saved in this browser into the shared online system?")) return;
     const { importLocalData } = await import("@/lib/acu-bridge");
@@ -59,8 +66,50 @@ function AcuApp() {
     window.location.reload();
   }
 
+  const userInitial = (
+    (user.user_metadata as any)?.name ||
+    user.email ||
+    "U"
+  ).charAt(0).toUpperCase();
+
   return (
     <>
+      <header className="mobile-topbar" aria-label="Mobile Navigation">
+        <button
+          type="button"
+          className="mobile-hamburger-btn"
+          aria-label={mobileNavOpen ? "Close navigation menu" : "Open navigation menu"}
+          aria-expanded={mobileNavOpen}
+          onClick={() => setMobileNavOpen((v) => !v)}
+        >
+          {mobileNavOpen ? (
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          ) : (
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          )}
+        </button>
+        <div className="mobile-brand">
+          <span className="mobile-brand-title">ACU DigiVerse</span>
+          <span className="mobile-brand-sub">Unified Digital Ecosystem</span>
+        </div>
+        <div className="mobile-user-pill" title={user.email}>
+          {userInitial}
+        </div>
+      </header>
+
+      <div
+        className={`mobile-nav-overlay ${mobileNavOpen ? "active" : ""}`}
+        onClick={() => setMobileNavOpen(false)}
+        aria-hidden="true"
+      />
+
       {importable && (
         <div className="card" style={{ margin: 12, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
           <span>Data from the old offline version was found in this browser.</span>
@@ -71,11 +120,31 @@ function AcuApp() {
         </div>
       )}
       {error && <p style={{ padding: 24 }}>{error}</p>}
-      <div className="app-layout acu-workspace">
-        <aside className="sidebar">
+      <div className={`app-layout acu-workspace ${mobileNavOpen ? "nav-open" : ""}`}>
+        <aside
+          className={`sidebar ${mobileNavOpen ? "open" : ""}`}
+          onClick={(e) => {
+            const target = e.target as HTMLElement;
+            if (target.closest("a") || target.closest("button.vs-back")) {
+              setMobileNavOpen(false);
+            }
+          }}
+        >
           <div className="brand">
-            <h1>ACU DigiVerse</h1>
-            <small>Unified Digital Ecosystem</small>
+            <div className="brand-header-row">
+              <div>
+                <h1>ACU DigiVerse</h1>
+                <small>Unified Digital Ecosystem</small>
+              </div>
+              <button
+                type="button"
+                className="sidebar-close-btn"
+                onClick={() => setMobileNavOpen(false)}
+                aria-label="Close navigation"
+              >
+                &times;
+              </button>
+            </div>
           </div>
           <nav id="nav"></nav>
           <div id="who"></div>
