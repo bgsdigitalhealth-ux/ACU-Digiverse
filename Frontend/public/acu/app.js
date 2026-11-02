@@ -1,4 +1,4 @@
-function getFinYear() { const d = new Date(), m = d.getMonth(), y = d.getFullYear(); return m >= 3 ? `${y}-${y + 1}` : `${y - 1}-${y}`; }
+function getFinYear() { const d = new Date(), m = d.getMonth(), y = d.getFullYear(); const ny = String((y + 1) % 100).padStart(2, "0"), py = String(y % 100).padStart(2, "0"); return m >= 3 ? `${y}-${ny}` : `${y - 1}-${py}`; }
 
 const KEY = "acu_v2"; let S = Object.assign({ users: [], colleges: [], depts: [], recs: [], zeros: [], events: [], subs: {}, headings: null }, window.__ACU.S);
 if (!S.reportCycle) S.reportCycle = "monthly";
@@ -38,12 +38,41 @@ const orgRec = e => S.recs.find(r => r.id === e.recId);
 function repRows(h, r) { let n = 0; return h[2].map(f => { const [l, t] = f.split("|"); if (t === "sec") return `<tr><th colspan="3" style="text-transform:none;font-size:14px;color:var(--tx)">${esc(l)}</th></tr>`; n++; return `<tr><td>${n}</td><td>${esc(l)}</td><td>${t === "fu" || t === "fp" ? fileChips((r.files || {})[l]) : esc(r.data[l] || "").replace(/\n/g, "<br>") || "—"}</td></tr>` }).join("") }
 const repHtml = (h, r) => `<div class="tw"><table><tr><th>Sl. No.</th><th>Particulars</th><th>Details / Information</th></tr>${repRows(h, r)}</table></div>`;
 const repBlock = e => { const r = orgRec(e); return r ? repHtml(H.find(h => h[0] === "evo"), r) : e.comp && e.comp.outcomes ? `<p>${e.comp.count} participants. ${esc(e.comp.outcomes)}</p>` : '<div class="empty">Report not found.</div>' };
-const evUnlocked = D => { const e = EVU && S.events.find(x => x.id === EVU); return e && e.dept === D.id && ["APPROVED", "CRETURNED", "SUBMITTED"].includes(e.status) ? e : null };
-function evAuto(e) {
+const evUnlocked = D => { const e = EVU && S.events.find(x => x.id === EVU); return e && e.dept === D.id && ["APPROVED", "CRETURNED", "SUBMITTED", "COMPLETED"].includes(e.status) ? e : null };
+function evAuto(e, hk = "evo") {
+  if (hk === "part") {
+    return {
+      lock: {
+        "Title": e.title || "",
+        "Date": e.date || "",
+        "Mode": e.mode || "Offline",
+        "Name of the Host Institution": e.venue || ""
+      },
+      pre: {
+        "Particulars": e.type || "",
+        "Attendee (Student/Staff)": "Staff",
+        "Name of the Attendee": e.faculty || e.conv || "",
+        "Purpose": e.type ? ("Participation in " + e.type) : "Academic Event Participation",
+        "Financial Assistance": e.costFig && +e.costFig > 0 ? "Yes" : "No",
+        "Amount in Rupees": e.costFig && +e.costFig > 0 ? String(e.costFig) : "0"
+      }
+    };
+  }
   const m = { "Special Lecture": "Guest Lecture", "Cultural": "Cultural Event" }, t = m[e.type] || e.type, L = { "Name of the Organizing Unit": dn(e.dept), "Title of the Event": e.title, "Mode of the Event": e.mode, "Date(s) and Duration": e.date ? `From ${e.date} to ${e.dateTo || e.date}` + (e.days ? ` (${e.days} day(s))` : "") : "", "Venue / Platform / Location": e.venue };
-  if (ET.includes(t) && t !== "Other") L["Type of Event"] = t; return { lock: L, pre: { "Type of Event": ET.includes(t) ? t : "Other", "Chief Guest / Resource Persons / Experts": (e.speakers || []).filter(Boolean).join("\n") } }
+  if (ET.includes(t) && t !== "Other") L["Type of Event"] = t; return { lock: L, pre: { "Type of Event": ET.includes(t) ? t : "Other", "Chief Guest / Resource Persons / Experts": (e.speakers || []).filter(Boolean).join("\n") } };
 }
-function evOpen(id) { if (!workflowOn()) return workflowUnavailable(); const D = myDepts()[0], e = S.events.find(x => x.id === id); if (!D || !e || e.dept !== D.id || !["APPROVED", "CRETURNED", "SUBMITTED"].includes(e.status)) return alert("Event Organize is available only for an approved Approval ID of your department."); EVU = id; setM(dateToM(e.date)); location.hash = "#/monthly/evo"; monthly("evo") }
+function evOpen(id, targetHk) {
+  if (!workflowOn()) return workflowUnavailable();
+  const D = myDepts()[0], e = S.events.find(x => x.id === id);
+  const hk = targetHk || (location.hash && location.hash.includes("/part") ? "part" : "evo");
+  const headLabel = hk === "part" ? "Participation Details" : "Event Organize";
+  if (!D || !e || e.dept !== D.id || !["APPROVED", "CRETURNED", "SUBMITTED", "COMPLETED"].includes(e.status))
+    return alert(headLabel + " is available only for an approved Approval ID of your department.");
+  EVU = id;
+  setM(dateToM(e.date));
+  location.hash = "#/monthly/" + hk;
+  monthly(hk);
+}
 const $ = s => document.querySelector(s), uid = () => Math.random().toString(36).slice(2, 10), esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const today = () => new Date().toISOString().slice(0, 10);
 const dateToM = (ds) => { const d = ds ? new Date(ds) : new Date(); if (S.reportCycle === "yearly") return d.getFullYear().toString(); if (S.reportCycle === "weekly") { const s = new Date(d.getFullYear(), 0, 1); return d.getFullYear() + "-W" + String(Math.ceil((((d - s) / 86400000) + s.getDay() + 1) / 7)).padStart(2, "0") } return d.toISOString().slice(0, 7) };
@@ -122,7 +151,7 @@ let NAV = [];
 function route() {
   H = S.headings;
   // A past event must not leave the rest of the app showing that event's period.
-  if (MPREV !== null && !(location.hash || "").startsWith("#/monthly/evo")) { M = MPREV; MPREV = null }
+  if (MPREV !== null && !(location.hash || "").startsWith("#/monthly/evo") && !(location.hash || "").startsWith("#/monthly/part")) { M = MPREV; MPREV = null }
   document.body.classList.remove('is-login');
   $("#app").classList.remove("back-workspace"); document.body.classList.toggle("in-back", (location.hash || "").startsWith("#/back"));
   const p = (location.hash || "#/dash").slice(2).split("/"); if (!location.hash && !window.__ACU_LANDED) { window.__ACU_LANDED = 1; const me = S.users.find(u => u.id === window.__ACU.uid); if (me && me.role === "dept") { location.replace("#/monthly"); p[0] = "monthly" } }
@@ -1222,22 +1251,33 @@ function getF(F, scope = document, selectedFiles = FS) {
   return o;
 }
 
-const gateList = () => { const D = myDepts()[0]; const E = D ? S.events.filter(e => e.dept === D.id && ["PENDING", "DAPPROVED", "RETURNED", "APPROVED", "CRETURNED"].includes(e.status)) : []; return E.length ? `<div class="tw" style="margin-bottom:14px"><table><tr><th>Approval ID</th><th>Event</th><th>Status</th><th></th></tr>${[...E].reverse().map(e => `<tr><td><code>${esc(e.num)}</code></td><td>${esc(e.title)}</td><td>${badge(e.status)}</td><td>${["APPROVED", "CRETURNED"].includes(e.status) ? `<button class="sm" onclick="evOpen('${e.id}')">Use this Approval ID</button>` : e.status === "RETURNED" ? `<a href="#/events/edit/${e.id}"><button class="sm g">Correct form</button></a>` : "<small>Awaiting approval</small>"}</td></tr>`).join("")}</table></div>` : "" };
-const gateHtml = () => `<div class="card"><h3>Event Organize is locked</h3><p class="lg"><b>No approval → no Event Organize.</b> Enter the Approval ID of an approved event. The college, department, faculty and event are taken from the approval automatically.</p><ol class="lg" style="margin:0 0 12px 18px"><li>Go to <b>Event reporting → + New event approval</b>, fill the approval form and submit it.</li><li>Once it has both approvals, copy its <b>Approval ID</b> (shown as the Form ref / Event ID).</li><li>Come back here, paste that Approval ID below, and the Events Organized report unlocks.</li></ol><div style="margin:0 0 14px"><a href="#/events/new"><button>Fill Event Approval Form</button></a></div>${gateList()}<div style="max-width:420px"><label>Approval ID</label><input id="g_id" placeholder="e.g. IQAC/BGS/DH/01/2026-27"></div><button id="g_go">Verify Approval ID</button><div id="g_out" style="margin-top:10px"></div></div>`;
+const gateList = (hk = "evo") => { const D = myDepts()[0]; const E = D ? S.events.filter(e => e.dept === D.id && ["PENDING", "DAPPROVED", "RETURNED", "APPROVED", "CRETURNED", "SUBMITTED", "COMPLETED"].includes(e.status)) : []; return E.length ? `<div class="tw" style="margin-bottom:14px"><table><tr><th>Approval ID</th><th>Event</th><th>Status</th><th></th></tr>${[...E].reverse().map(e => `<tr><td><code>${esc(e.num)}</code></td><td>${esc(e.title)}</td><td>${badge(e.status)}</td><td>${["APPROVED", "CRETURNED", "SUBMITTED", "COMPLETED"].includes(e.status) ? `<button class="sm" onclick="evOpen('${e.id}','${hk}')">Use this Approval ID</button>` : e.status === "RETURNED" ? `<a href="#/events/edit/${e.id}"><button class="sm g">Correct form</button></a>` : "<small>Awaiting approval</small>"}</td></tr>`).join("")}</table></div>` : "" };
+const gateHtml = (hk = "evo") => {
+  const isPart = hk === "part";
+  const title = isPart ? "Participation Details is locked" : "Event Organize is locked";
+  const desc = isPart
+    ? "<b>No approval → no Participation Details.</b> Enter the Approval ID of an approved event. The title, dates, mode, institution, attendee and financial details are taken from the approval automatically."
+    : "<b>No approval → no Event Organize.</b> Enter the Approval ID of an approved event. The college, department, faculty and event are taken from the approval automatically.";
+  const col = myCols()[0] || {};
+  const exCode = (col.code || "SACCP").toUpperCase();
+  const exId = `IQAC/${exCode}/01/${getFinYear()}`;
+  return `<div class="card"><h3>${title}</h3><p class="lg">${desc}</p><ol class="lg" style="margin:0 0 12px 18px"><li>Go to <b>Event reporting → + New event approval</b>, fill the approval form and submit it.</li><li>Once it has both approvals (College Dean &amp; University Admin), copy its <b>Approval ID</b> (e.g. <code>${exId}</code>).</li><li>Come back here, paste that Approval ID below, and ${isPart ? "Participation Details" : "Events Organized"} unlocks.</li></ol><div style="margin:0 0 14px"><a href="#/events/new"><button>Fill Event Approval Form</button></a></div>${gateList(hk)}<div style="max-width:420px"><label>Approval ID</label><input id="g_id" placeholder="e.g. ${exId}"></div><button id="g_go">Verify Approval ID</button><div id="g_out" style="margin-top:10px"></div></div>`;
+};
 const evBanner = e => `<div class="note"><b>Approval ID verified:</b> <code>${esc(e.num)}</code> ${badge(e.status)}<br>College: ${esc(cn((S.depts.find(d => d.id === e.dept) || {}).college))} · Department: ${esc(dn(e.dept))} · Faculty: ${esc(e.faculty || "—")}${e.conv ? " · Convener: " + esc(e.conv) : ""}<br>Event: ${esc(e.title)} · Approved dates: ${e.date}${e.dateTo ? " to " + e.dateTo : ""}<br>Fields marked "from approval" are locked. Reporting ${cyclePeriod()}: ${dateToM(e.date)}.${e.status === "CRETURNED" && e.remark ? `<br><b>Returned:</b> ${esc(e.remark)}` : ""}<br><button class="g sm" id="g_x">Use a different Approval ID</button></div>`;
 function monthly(hk, rid) {
   if (rid === "article") { aiShow(); return }
   if (AIFORM && location.hash === AIFORM.hash) { const root = $("#app"); root.replaceChildren(...AIFORM.nodes); FS = AIFORM.files; AIFORM = null; return }
   const D = myDepts()[0]; if (!D) return $("#app").innerHTML = `<h2>${cycleName()} reporting</h2><div class="card"><h3>No department linked to this login</h3><p>The ${H.length} reporting headings appear once this account is linked to a department. Ask your College Admin to create the department under <b>Departments</b>, then link this user to it on the <b>Role</b> page (Assign Users).</p></div>`;
   if (!hk) { EVU = null; $("#app").innerHTML = `<h2>${cycleName()} reporting · ${esc(D.name)}</h2><p class="s">Report every one of the ${H.length} headings each ${cyclePeriod()}. If nothing happened, submit zero with a remark.</p>${mSel()}<div class="card" style="margin-top:12px;padding-top:12px"><div class="tw"><table class="table-hover v-mid"><tr><th class="w-1">#</th><th>Heading</th><th>Status</th><th class="text-right">Action</th></tr>${H.map((h, i) => { const s = hs(D.id, h[0]), c = S.recs.filter(x => x.dept === D.id && x.month === M && x.head === h[0]).length; return `<tr><td class="w-1" style="color:var(--mu)">${i + 1}</td><td><b style="font-weight:500;font-size:15px">${h[1]}</b></td><td>${s === "data" ? `<span class="b ok">Data entered (${c})</span>` : s === "zero" ? '<span class="b wa">Zero (0)</span>' : '<span class="b er">Not reported</span>'}</td><td class="text-right"><a href="#/monthly/${h[0]}"><button class="${s === "none" ? "sm" : "g sm"}">${s === "none" ? "Enter Data" : "View / Edit"}</button></a></td></tr>` }).join("")}</table></div></div>${deptDone(D) ? `<div class="note">All ${H.length} headings are reported for ${M}.</div>` : ""}`; return }
-  const h = H.find(x => x[0] === hk), F = h[2], rs = S.recs.filter(x => x.dept === D.id && x.month === M && x.head === hk), z = S.zeros.find(x => x.dept === D.id && x.month === M && x.head === hk), vw = rid && rid.startsWith("v_"), CI = (h[3] || [0, 1, 2, 3]).filter(i => i < F.length).map(i => F[i]), EVG = hk === "evo", fe = EVG ? evUnlocked(D) : null, ed = (EVG ? (fe && fe.recId && S.recs.find(r => r.id === fe.recId)) : (rid && !vw && rs.find(x => x.id === rid))) || null;
+  const isGated = hk === "evo" || hk === "part";
+  const h = H.find(x => x[0] === hk), F = h[2], rs = S.recs.filter(x => x.dept === D.id && x.month === M && x.head === hk), z = S.zeros.find(x => x.dept === D.id && x.month === M && x.head === hk), vw = rid && rid.startsWith("v_"), CI = (h[3] || [0, 1, 2, 3]).filter(i => i < F.length).map(i => F[i]), EVG = isGated, fe = EVG ? evUnlocked(D) : null, ed = (EVG ? (fe && (hk === "part" ? fe.partRecId : fe.recId) && S.recs.find(r => r.id === (hk === "part" ? fe.partRecId : fe.recId))) : (rid && !vw && rs.find(x => x.id === rid))) || null;
   if (vw) {
     const r = rs.find(x => x.id === rid.slice(2)); if (!r) return monthly(hk); const rows = repRows(h, r);
     $("#app").innerHTML = `<p class="noprint"><a href="#/monthly/${hk}">← Back to ${h[1]}</a></p><h2 style="text-align:center;margin-bottom:0">Adichunchanagiri University</h2>${h[5] ? `<p style="text-align:center;margin:0 0 12px">${h[5]}</p>` : `<p style="text-align:center;margin:0 0 12px">${h[1]}</p>`}<div class="tw"><table><tr><th>Sl. No.</th><th>Particulars</th><th>Details / Information</th></tr>${rows}</table></div>${h[4] ? `<h3 style="margin-top:16px">Submission Guidelines</h3><ul class="lg">${h[4].map(g => `<li>${esc(g)}</li>`).join("")}</ul>` : ""}<div class="noprint"><button onclick="print()">Print report</button></div>`; hydrate($("#app")); return
   }
   $("#app").innerHTML = `<p><a href="#/monthly">← All headings</a></p><h2>${h[1]} · ${M}</h2><p class="s">${esc(D.name)}</p>
 ${z ? `<div class="card"><span class="b wa">Zero submitted</span> ${esc(z.remarks || "")}<br><button class="g sm" id="uz">Withdraw zero to enter data</button></div>` : ""}
-${z ? "" : EVG && !fe ? gateHtml() : `<div class="card"><h3>${ed ? "Edit record" : EVG ? "Event Organize report" : "Activity done: add a record"}</h3>${EVG ? evBanner(fe) : ""}${h[5] ? `<p class="lg">${h[5]}</p>` : ""}${h[4] ? `<div class="note"><b>Submission guidelines</b><ul style="margin:6px 0 0;padding-left:18px">${h[4].map(g => `<li>${esc(g)}</li>`).join("")}</ul></div>` : ""}<div class="row">${(EVCTX = fe ? evAuto(fe) : null, "")}${F.map((s, i) => fld(s, i, ed && ed.data[s.split("|")[0]])).join("")}${(EVCTX = null, "")}</div><button id="sv">${ed ? "Save changes" : "Save record"}</button>${ed ? ` <a href="#/monthly/${hk}"><button class="g">Cancel</button></a>` : ""}${hk === "evo" ? aiBox() : ""}</div>`}
+${z ? "" : EVG && !fe ? gateHtml(hk) : `<div class="card"><h3>${ed ? "Edit record" : EVG ? (hk === "part" ? "Participation Details report" : "Event Organize report") : "Activity done: add a record"}</h3>${EVG ? evBanner(fe) : ""}${h[5] ? `<p class="lg">${h[5]}</p>` : ""}${h[4] ? `<div class="note"><b>Submission guidelines</b><ul style="margin:6px 0 0;padding-left:18px">${h[4].map(g => `<li>${esc(g)}</li>`).join("")}</ul></div>` : ""}<div class="row">${(EVCTX = fe ? evAuto(fe, hk) : null, "")}${F.map((s, i) => fld(s, i, ed && ed.data[s.split("|")[0]])).join("")}${(EVCTX = null, "")}</div><button id="sv">${ed ? "Save changes" : "Save record"}</button>${ed ? ` <a href="#/monthly/${hk}"><button class="g">Cancel</button></a>` : ""}${hk === "evo" ? aiBox() : ""}</div>`}
 ${rs.length ? `<div class="card"><h3>Records this ${cyclePeriod()} (${rs.length})</h3><div class="tw"><table><tr>${EVG ? "<th>Approval ID</th>" : ""}${CI.map(s => `<th>${esc(s.split("|")[0])}</th>`).join("")}<th></th></tr>${rs.map(r => `<tr>${EVG ? `<td><code>${esc(r.evNum || "No Approval ID (legacy)")}</code></td>` : ""}${CI.map(s => `<td>${esc(r.data[s.split("|")[0]] || "—")}</td>`).join("")}<td><a href="#/monthly/${hk}/v_${r.id}"><button class="g sm">View / print</button></a>${EVG && r.article ? `<button class="g sm" onclick="aiStored('${r.id}')">View article / PDF</button>` : ""}${EVG && r.evId ? (["CRETURNED", "SUBMITTED"].includes((S.events.find(x => x.id === r.evId) || {}).status) ? `<button class="g sm" onclick="evOpen('${r.evId}')">Edit and resubmit</button>` : "") : `${EVG ? "" : `<a href="#/monthly/${hk}/${r.id}"><button class="g sm">Edit</button></a>`}<button class="r sm" onclick="delRec('${r.id}','${hk}')">Delete</button>`}</td></tr>`).join("")}</table></div></div>` : ""}
 ${!rs.length && !z ? `<div class="card"><h3>No activity this ${cyclePeriod()}</h3><label>Remarks (optional)</label><input id="zr" placeholder="e.g. no activity during this ${cyclePeriod()}"><button class="g" id="sz">Submit zero (0)</button></div>` : ""}`;
   if ($("#ai_go")) { AIART = ed && ed.article || null; AIHEAD = hk; AIIMAGES = []; AIOWNER = window.__ACU.uid; $("#ai_go").onclick = () => aiRun(F, h, D); }
@@ -1290,8 +1330,8 @@ ${!rs.length && !z ? `<div class="card"><h3>No activity this ${cyclePeriod()}</h
     }
     if (EVG) {
       const e2 = S.events.find(x => x.id === (fe && fe.id));
-      if (!e2 || e2.dept !== D.id || !["APPROVED", "CRETURNED", "SUBMITTED"].includes(e2.status)) {
-        alert("This Approval ID is no longer valid for Event Organize.");
+      if (!e2 || e2.dept !== D.id || !["APPROVED", "CRETURNED", "SUBMITTED", "COMPLETED"].includes(e2.status)) {
+        alert("This Approval ID is no longer valid for " + (hk === "part" ? "Participation Details." : "Event Organize."));
         return false;
       }
     }
@@ -1302,14 +1342,18 @@ ${!rs.length && !z ? `<div class="card"><h3>No activity this ${cyclePeriod()}</h
     }
     rec.data = d;
     rec.files = files;
-    if (EVG && AIART && AIHEAD === "evo") rec.article = JSON.parse(JSON.stringify(AIART));
+    if (hk === "evo" && AIART && AIHEAD === "evo") rec.article = JSON.parse(JSON.stringify(AIART));
     if (EVG) { rec.evId = fe.id; rec.evNum = fe.num; }
     if (!ed) S.recs.push(rec);
-    if (EVG) {
+    if (hk === "evo") {
       fe.recId = rec.id;
       fe.status = "SUBMITTED";
       fe.comp = { count: +(d["Number of Participants"] || 0), date: fe.date };
       fe.hist.push([new Date().toISOString(), "Event Organize report " + (ed ? "resubmitted" : "submitted") + " by " + U.name]);
+      EVU = null;
+    } else if (hk === "part") {
+      fe.partRecId = rec.id;
+      fe.hist.push([new Date().toISOString(), "Participation Details report " + (ed ? "resubmitted" : "submitted") + " by " + U.name]);
       EVU = null;
     }
     await save();
@@ -1322,10 +1366,16 @@ ${!rs.length && !z ? `<div class="card"><h3>No activity this ${cyclePeriod()}</h
   if (EVG) AISUBMIT = submitReport;
   if ($("#sv")) $("#sv").onclick = submitReport;
   if ($("#g_go")) $("#g_go").onclick = () => {
-    const v = $("#g_id").value.trim().toUpperCase(), o = $("#g_out"); if (!v) return; const e = S.events.find(x => x.num.toUpperCase() === v && x.dept === D.id); if (!e) { o.innerHTML = '<div class="note er">Approval ID not found for your department.</div>'; return }
-    const m = { PENDING: "This Approval ID is still awaiting College Dean approval.", DAPPROVED: "This Approval ID is awaiting University Admin final approval.", RETURNED: "This approval was returned for correction. Correct and resubmit the approval form first.", REJECTED: "This approval was rejected. Event Organize is not allowed.", SUBMITTED: "An Event Organize report is already submitted and awaiting verification.", COMPLETED: "This event is already completed and verified." }[e.status]; if (m) { o.innerHTML = `<div class="note er">${m}</div>`; return } EVU = e.id; setM(dateToM(e.date)); monthly("evo")
+    const v = $("#g_id").value.trim().toUpperCase(), o = $("#g_out"); if (!v) return;
+    const e = S.events.find(x => (x.num || "").toUpperCase() === v && x.dept === D.id);
+    if (!e) { o.innerHTML = '<div class="note er">Approval ID not found for your department.</div>'; return; }
+    const m = { PENDING: "This Approval ID is still awaiting College Dean approval.", DAPPROVED: "This Approval ID is awaiting University Admin final approval.", RETURNED: "This approval was returned for correction. Correct and resubmit the approval form first.", REJECTED: "This approval was rejected. Report submission is not allowed." }[e.status];
+    if (m) { o.innerHTML = `<div class="note er">${m}</div>`; return; }
+    EVU = e.id;
+    setM(dateToM(e.date));
+    monthly(hk);
   };
-  if ($("#g_x")) $("#g_x").onclick = () => { EVU = null; monthly("evo") }; hydrate($("#app"));
+  if ($("#g_x")) $("#g_x").onclick = () => { EVU = null; monthly(hk); }; hydrate($("#app"));
   if ($("#sz")) $("#sz").onclick = () => { S.zeros.push({ dept: D.id, month: M, head: hk, remarks: $("#zr").value.trim(), by: U.name }); save(); monthly(hk) };
   if ($("#uz")) $("#uz").onclick = () => { S.zeros = S.zeros.filter(x => x !== z); save(); monthly(hk) }
 }
@@ -1432,12 +1482,38 @@ function events(a, id) {
     if (!D) { $("#app").innerHTML = '<h2>Event approval form</h2><div class="note">No department is assigned to this account. Ask your administrator to assign a department before creating an approval.</div>'; return }
     const e = a === "edit" && S.events.find(x => x.id === id), g = k => esc(e && e[k] || ""), sp = e && e.speakers || [], TY = ["Seminar", "Conference", "Workshop", "Training", "Short Term Course", "FDP", "Special Lecture", "Sports", "Cultural", "Co-curricular", "Extra Curricular", "Other"], oth = e && !TY.includes(e.type);
     let myCfs = S.eventConfs.filter(x => x.college === D.college);
-    if (myCfs.length === 0) { S.eventConfs.push({ id: uid(), p1: "IQAC", p2: "BGS", seq: "01", fy: getFinYear(), college: D.college }); save(); myCfs = S.eventConfs.filter(x => x.college === D.college); }
-    // Each department keeps its own running number per format and financial year; a new department starts at 01.
+    const colObj = S.colleges.find(c => c.id === D.college) || {};
+    const collegeCode = (colObj.code || (D.code ? D.code : "SACCP")).toUpperCase();
+    if (myCfs.length === 0) {
+      S.eventConfs.push({ id: uid(), p1: "IQAC", p2: collegeCode, seq: "01", fy: getFinYear(), college: D.college });
+      save();
+      myCfs = S.eventConfs.filter(x => x.college === D.college);
+    }
+    // Dynamic sequential IQAC numbering: IQAC/<COLLEGE_CODE>/<SEQ>/<FIN_YEAR> e.g. IQAC/SACCP/01/2026-27
     const getExpectedNum = (confId) => {
-      const conf = myCfs.find(x => x.id === confId) || myCfs[0];
-      const pre = `${conf.p1}/${conf.p2}/${D.code}/`; const suf = `/${getFinYear()}`;
-      const used = S.events.filter(x => x.dept === D.id && typeof x.num === "string" && x.num.startsWith(pre) && x.num.endsWith(suf)).map(x => parseInt(x.num.slice(pre.length, x.num.length - suf.length), 10)).filter(n => !isNaN(n));
+      const conf = (confId && myCfs.find(x => x.id === confId)) || myCfs[0] || {};
+      const p1 = (conf.p1 || "IQAC").trim();
+      const p2 = collegeCode;
+      const fy = getFinYear();
+      const pre = `${p1}/${p2}/`;
+      const suf = `/${fy}`;
+      const used = (S.events || [])
+        .filter(x => typeof x.num === "string")
+        .map(x => {
+          const s = x.num.trim();
+          if (s.startsWith(pre) && s.endsWith(suf)) {
+            const middle = s.slice(pre.length, s.length - suf.length).replace(/^[^\d]+/, "");
+            const n = parseInt(middle, 10);
+            return isNaN(n) ? null : n;
+          }
+          const m = s.match(new RegExp(`^${p1}\\/${p2}\\/([0-9]+)\\/`, "i"));
+          if (m) {
+            const n = parseInt(m[1], 10);
+            return isNaN(n) ? null : n;
+          }
+          return null;
+        })
+        .filter(n => n !== null);
       const next = (used.length ? Math.max(...used) : 0) + 1;
       return `${pre}${String(next).padStart(2, "0")}${suf}`;
     };
@@ -1447,7 +1523,11 @@ ${!e && myCfs.length > 1 ? `<div class="approval-format noprint"><label for="a_c
 ${approvalPaper(e || {}, { editable: true, isNew: !e, department: D.name, reference: expectedNum, types: TY, other: oth })}
 <div class="approval-actions noprint"><button id="a_g">${e ? "Resubmit for approval" : "Submit for approval"}</button><a href="#/events">Cancel</a></div>`;
     $("#a_y").onchange = () => $("#a_ow").hidden = $("#a_y").value !== "Other";
-    if ($("#a_conf_sel")) $("#a_conf_sel").onchange = () => $("#e_ref").innerText = getExpectedNum($("#a_conf_sel").value);
+    if ($("#a_conf_sel")) $("#a_conf_sel").onchange = () => {
+      const n = getExpectedNum($("#a_conf_sel").value);
+      const el = $("#e_ref");
+      if (el) { if (el.tagName === "INPUT") el.value = n; else el.innerText = n; }
+    };
     const dy = () => { const f = $("#a_fr").value, t = $("#a_to").value; if (f && t && t >= f) $("#a_dy").value = Math.round((new Date(t) - new Date(f)) / 864e5) + 1 }; $("#a_fr").onchange = $("#a_to").onchange = dy;
     $("#a_g").onclick = () => {
       const v = k => $("#" + k).value.trim(), ty = $("#a_y").value === "Other" ? v("a_ot") : $("#a_y").value, mo = (document.querySelector("input[name=a_m]:checked") || {}).value;
@@ -1462,7 +1542,8 @@ ${approvalPaper(e || {}, { editable: true, isNew: !e, department: D.name, refere
       else {
         const confId = $("#a_conf_sel") ? $("#a_conf_sel").value : myCfs[0].id;
         const conf = myCfs.find(x => x.id === confId) || myCfs[0];
-        const num = getExpectedNum(confId);
+        const refInp = $("#e_ref") ? ($("#e_ref").tagName === "INPUT" ? $("#e_ref").value.trim() : $("#e_ref").innerText.trim()) : "";
+        const num = refInp || getExpectedNum(confId);
 
         S.events.push({ id: uid(), num, dept: D.id, ...o, by: U.name, byEmail: U.email || "", submittedAt: new Date().toISOString(), hist: [[new Date().toISOString(), "Submitted for approval"]] })
       }
@@ -1475,6 +1556,7 @@ ${approvalPaper(e || {}, { editable: true, isNew: !e, department: D.name, refere
 ${apForm(e)}<div class="approval-actions noprint"><button class="g" onclick="printApprovalForm()">Print approval form</button></div>
 ${articlePreview(e)}
 <div class="card"><h3>Event Organize report</h3>${orgRec(e) || c ? repBlock(e) : '<div class="empty">Not filed yet. It unlocks only after Dean / Principal approval.</div>'}</div>
+<div class="card"><h3>Participation Details report</h3>${(() => { const pr = S.recs.find(r => (r.evId === e.id || r.id === e.partRecId) && r.head === "part"); return pr ? repHtml(H.find(h => h[0] === "part"), pr) : '<div class="empty">Not filed yet.</div>'; })()}</div>
 <div class="card"><h3>Approval history</h3>${(e.approvals || []).length ? `<div class="tw"><table><tr><th>Stage</th><th>Decision</th><th>Approver</th><th>Remarks</th><th>When</th></tr>${e.approvals.map(a => `<tr><td>${esc(a.stage === "dean" ? "College Dean" : a.stage === "university" ? "University Admin" : "Verification")}</td><td>${esc((ST[a.decision] || [a.decision])[0])}</td><td>${esc(a.byName || "—")}</td><td>${esc(a.remarks || "—")}</td><td>${String(a.at || "").slice(0, 16).replace("T", " ")}</td></tr>`).join("")}</table></div>` : '<div class="empty">No approval decision recorded yet.</div>'}</div>
 <div class="card"><h3>Workflow &amp; audit trail</h3><div class="tw"><table><tr><th>When</th><th>Action</th></tr>${e.hist.map(h => `<tr><td>${h[0].slice(0, 16).replace("T", " ")}</td><td>${esc(h[1])}</td></tr>`).join("")}</table></div></div>`; hydrate($("#app")); return
   }
@@ -1482,7 +1564,7 @@ ${articlePreview(e)}
   // Roles whose menu has no "Event Reporting" entry (Super Admin, College Admin, University Admin)
   // still open this page from the dashboard's "Recent events" card, but as a read-only full list.
   const ro = !NAV.includes("events"), canFile = !ro && isD, gl = isGlobal();
-  $("#app").innerHTML = `${ro ? `<p><a href="#/dash">← Dashboard</a></p>` : ""}<h2>${ro ? "All events" : "Event reporting"}</h2><p class="s">College Dean approval → University final approval → Event Organize (needs the Approval ID) → Verification, all under one Event ID.${E.length ? ` Showing all ${E.length} event${E.length === 1 ? "" : "s"} in your scope.` : ""}</p>${canFile ? `<a href="#/events/new"><button>+ New event approval</button></a>` : ""}<div class="card" style="margin-top:12px">${E.length ? `<div class="tw"><table><tr>${gl ? "<th>College</th>" : ""}<th>Event ID</th><th>Event</th><th>Department</th><th>Date</th><th>Status</th><th></th></tr>${[...E].reverse().map(e => `<tr>${gl ? `<td>${esc(cn(eCollege(e)))}</td>` : ""}<td><a href="#/events/view/${e.id}"><code>${esc(e.num)}</code></a></td><td>${esc(e.title)}</td><td>${esc(dn(e.dept))}</td><td>${e.date}</td><td>${badge(e.status)}${e.remark && ["RETURNED", "REJECTED", "CRETURNED"].includes(e.status) ? `<br><small>${esc(e.remark)}</small>` : ""}</td><td>${canFile && (e.status === "APPROVED" || e.status === "CRETURNED") ? `<button class="sm" onclick="evOpen('${e.id}')">Open Event Organize</button>` : canFile && e.status === "RETURNED" ? `<a href="#/events/edit/${e.id}"><button class="sm">Correct</button></a>` : ""}</td></tr>`).join("")}</table></div>` : '<div class="empty">No events yet.</div>'}</div>`
+  $("#app").innerHTML = `${ro ? `<p><a href="#/dash">← Dashboard</a></p>` : ""}<h2>${ro ? "All events" : "Event reporting"}</h2><p class="s">College Dean approval → University final approval → Event Organize (needs the Approval ID) → Verification, all under one Event ID.${E.length ? ` Showing all ${E.length} event${E.length === 1 ? "" : "s"} in your scope.` : ""}</p>${canFile ? `<a href="#/events/new"><button>+ New event approval</button></a>` : ""}<div class="card" style="margin-top:12px">${E.length ? `<div class="tw"><table><tr>${gl ? "<th>College</th>" : ""}<th>Event ID</th><th>Event</th><th>Department</th><th>Date</th><th>Status</th><th></th></tr>${[...E].reverse().map(e => `<tr>${gl ? `<td>${esc(cn(eCollege(e)))}</td>` : ""}<td><a href="#/events/view/${e.id}"><code>${esc(e.num)}</code></a></td><td>${esc(e.title)}</td><td>${esc(dn(e.dept))}</td><td>${e.date}</td><td>${badge(e.status)}${e.remark && ["RETURNED", "REJECTED", "CRETURNED"].includes(e.status) ? `<br><small>${esc(e.remark)}</small>` : ""}</td><td>${canFile && (e.status === "APPROVED" || e.status === "CRETURNED") ? `<div style="display:flex;gap:4px;flex-wrap:wrap"><button class="sm" onclick="evOpen('${e.id}','evo')">Open Event Organize</button><button class="sm g" onclick="evOpen('${e.id}','part')">Open Participation Details</button></div>` : canFile && e.status === "RETURNED" ? `<a href="#/events/edit/${e.id}"><button class="sm">Correct</button></a>` : ""}</td></tr>`).join("")}</table></div>` : '<div class="empty">No events yet.</div>'}</div>`
 }
 function dRows() {
   const E = myEv().filter(e => e.date === DD), ap = ["APPROVED", "SUBMITTED", "CRETURNED", "COMPLETED"];
@@ -1512,7 +1594,7 @@ function approvalPaper(e, options = {}) {
   const modes = `<div class="approval-modes">${MD.map(m => `<label><input type="radio" name="a_m" value="${m}" ${e.mode === m ? "checked" : ""} ${edit ? "" : "disabled"}>${m}</label>`).join("")}</div>`;
   return `<section class="approval-paper${edit ? " approval-edit" : ""}" aria-label="University event approval form">
 <header class="approval-letterhead"><div>ADICHUNCHANAGIRI<br>UNIVERSITY</div><span>Accredited with NAAC Grade A+</span></header>
-<div class="approval-meta"><strong>Form ref: <span id="${edit ? "e_ref" : "approval-ref"}">${esc(options.reference || e.num || "—")}</span></strong><span>Date: ${esc(formDate)}</span></div>
+<div class="approval-meta"><strong>Form ref: ${edit ? `<input id="e_ref" value="${esc(options.reference || e.num || "")}" style="font-weight:700;font-family:monospace;font-size:14px;padding:3px 8px;border:1px solid var(--ln);border-radius:4px;display:inline-block;width:240px;max-width:100%" placeholder="e.g. IQAC/SACCP/01/2026-27">` : `<span id="approval-ref"><code>${esc(options.reference || e.num || "—")}</code></span>`}</strong><span>Date: ${esc(formDate)}</span></div>
 <h2>EVENT APPROVAL FORM</h2><p class="approval-college">${esc(cn((S.depts.find(d => d.id === e.dept) || {}).college || myDepts()[0]?.college))}</p>
 <table class="approval-table"><tbody>
 ${row("Proposed Event", type, true)}
@@ -1526,7 +1608,10 @@ ${row("Topic", input("a_t", "Topic", e.title), true)}
 ${row('Duration <small>(in days)</small>', `<div class="approval-schedule"><div class="approval-pair">${field("Duration (in days)", input("a_dy", "Duration (in days)", e.days, "number", 'min="1"'))}${field("Proposed Mode", modes)}</div><div class="approval-dates">${field("Date — From", input("a_fr", "Date: From", e.date, "date", options.isNew ? `min="${today()}"` : ""))}${field("To", input("a_to", "Date: To", e.dateTo, "date", options.isNew ? `min="${today()}"` : ""))}${field("Venue", input("a_v", "Venue", e.venue))}</div></div>`)}
 ${row('Proposed Cost for the Event (Rs.) <small>(if any)</small>', `<div class="approval-cost">${field("In figures", input("a_cf", "Proposed cost in figures", e.costFig, "number", 'min="0"'))}${field("In words", input("a_cw", "Proposed cost in words", e.costWords))}</div>`)}
 ${e.desc && !edit ? row("Description", value(e.desc)) : ""}
-</tbody></table></section>`;
+</tbody></table>
+<div style="display:flex;justify-content:flex-end;margin-top:24px;padding-right:12px"><div style="text-align:center"><div style="font-weight:700;font-size:14px;color:var(--tx)">Director IQAC</div></div></div>
+<div style="text-align:center;margin-top:24px;font-size:12px;color:var(--mu,#666);border-top:1px solid var(--ln);padding-top:8px">B G Nagara - 571448, NH-75, Nagamangala Taluk, Mandya District, Karnataka, India.</div>
+</section>`;
 }
 function apForm(e) { return approvalPaper(e) }
 function printApprovalForm() {
