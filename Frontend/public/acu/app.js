@@ -177,7 +177,7 @@ async function accountEmails() {
       const query = EMAILFILTER.search.toLowerCase();
       const rows = accounts.filter(u => (!EMAILFILTER.status || u.status === EMAILFILTER.status) && `${u.name} ${u.email}`.toLowerCase().includes(query));
       const actions = u => u.status === "pending" ? `<button class="sm" data-email-action="invite" data-user="${esc(u.id)}">Resend activation</button>` : u.status === "active" ? `<button class="g sm" data-email-action="reset" data-user="${esc(u.id)}">Send password reset</button>` : '—';
-      $("#email-rows").innerHTML = rows.map(u => `<tr><td><strong>${esc(u.name)}</strong><br><span class="lg">${esc(u.email)}</span></td><td>${esc(RN[u.role] || u.role)}<br><span class="lg">${u.college ? esc(cn(u.college)) : u.role === "dept" || u.role === "ca" || u.role === "dean" ? "Not assigned" : "University"}${u.dept ? " · " + esc(dn(u.dept)) : ""}</span>${['dept','ca','dean'].includes(u.role) && (!u.college || (u.role === 'dept' && !u.dept)) ? `<br><a href="#/users/edit/${esc(u.id)}">Assign college / department</a>` : ''}</td><td><span class="b ${u.status === 'pending' ? 'wa' : ''}">${({ pending: 'Pending activation', active: 'Active', disabled: 'Disabled', unknown: 'Unknown' })[u.status] || 'Unknown'}</span></td><td>${esc(bvDate(u.lastLogin))}</td><td>${actions(u)}<br><a href="#/users/edit/${esc(u.id)}">Edit user</a></td></tr>`).join("") || '<tr><td colspan="5" class="empty">No staff accounts found.</td></tr>';
+      $("#email-rows").innerHTML = rows.map(u => `<tr><td><strong>${esc(u.name)}</strong><br><span class="lg">${esc(u.email)}</span></td><td>${esc(RN[u.role] || u.role)}<br><span class="lg">${u.college ? esc(cn(u.college)) : u.role === "dept" || u.role === "ca" || u.role === "dean" ? "Not assigned" : "University"}${u.dept ? " · " + esc(dn(u.dept)) : ""}</span>${['dept', 'ca', 'dean'].includes(u.role) && (!u.college || (u.role === 'dept' && !u.dept)) ? `<br><a href="#/users/edit/${esc(u.id)}">Assign college / department</a>` : ''}</td><td><span class="b ${u.status === 'pending' ? 'wa' : ''}">${({ pending: 'Pending activation', active: 'Active', disabled: 'Disabled', unknown: 'Unknown' })[u.status] || 'Unknown'}</span></td><td>${esc(bvDate(u.lastLogin))}</td><td>${actions(u)}<br><a href="#/users/edit/${esc(u.id)}">Edit user</a></td></tr>`).join("") || '<tr><td colspan="5" class="empty">No staff accounts found.</td></tr>';
       document.querySelectorAll('[data-email-action]').forEach(button => {
         const waiting = EMAILSEND.has(button.dataset.user) || (EMAILWAIT.get(button.dataset.user) || 0) > Date.now();
         button.disabled = waiting;
@@ -1185,7 +1185,42 @@ function fld(s, i, v) {
   else c = `<input id="${id}" type="${t === "d" || t === "dn" ? "date" : t === "n" ? "number" : t === "l" ? "url" : "text"}" value="${esc(t === "dp" ? (v ?? d0.name ?? "") : t === "dn" ? (v || today()) : x)}" ${t === "l" ? 'placeholder="https://"' : ""}>`;
   return `<div ${t === "ta" ? 'style="grid-column:1/-1"' : ""}><label>${esc(l)}${r ? ' <span class="rq">*</span>' : ""}</label>${c}</div>`
 }
-function getF(F, scope = document, selectedFiles = FS) { const o = {}; FO = {}; for (let i = 0; i < F.length; i++) { const [l, t, r] = F[i].split("|"); if (t === "sec") continue; if (t === "fu" || t === "fp") { const a = selectedFiles[i] || []; if (r && !a.length) { alert(`"${l}" is mandatory: please upload at least one file.`); return null } if (t === "fp" && (a.length < 4 || a.length > 6)) { alert("Please upload 4 to 6 photographs."); return null } o[l] = a.length ? a.length + " file(s): " + a.map(x => x.name).join(", ") : ""; FO[l] = a; continue } const v = scope.querySelector("#f" + i).value.trim(); if (r && !v) { alert(`"${l}" is mandatory.`); return null } if (v && t === "n" && (isNaN(Number(v)) || Number(v) < 0)) { alert(`"${l}" must be a valid number (0 or more).`); return null } if (v && (t === "d" || t === "dn") && isNaN(new Date(v).getTime())) { alert(`"${l}" must be a valid date.`); return null } if (v && t === "l" && !/^https?:\/\/[^\s]+\.[^\s]+/.test(v)) { alert(`"${l}" must be a valid link starting with http:// or https://.`); return null } o[l] = v } return o }
+function getF(F, scope = document, selectedFiles = FS) {
+  const o = {}; FO = {};
+  for (let i = 0; i < F.length; i++) {
+    const [l, t, r] = F[i].split("|");
+    if (t === "sec") continue;
+    if (t === "fu" || t === "fp") {
+      const a = selectedFiles[i] || [];
+      if (r && !a.length) { alert(`"${l}" is mandatory: please upload at least one file.`); return null; }
+      if (t === "fp" && (a.length < 4 || a.length > 6)) { alert("Please upload 4 to 6 photographs."); return null; }
+      o[l] = a.length ? a.length + " file(s): " + a.map(x => x.name).join(", ") : "";
+      FO[l] = a;
+      continue;
+    }
+    const inp = (scope && scope.querySelector ? scope.querySelector("#f" + i) : null) || document.getElementById("f" + i);
+    const v = inp ? inp.value.trim() : "";
+    if (r && !v) { alert(`"${l}" is mandatory.`); if (inp) inp.focus(); return null; }
+    if (v && t === "n" && (isNaN(Number(v)) || Number(v) < 0)) { alert(`"${l}" must be a valid number (0 or more).`); if (inp) inp.focus(); return null; }
+    if (v && (t === "d" || t === "dn") && isNaN(new Date(v).getTime())) { alert(`"${l}" must be a valid date.`); if (inp) inp.focus(); return null; }
+    if (v && t === "l") {
+      let linkVal = v;
+      if (!/^https?:\/\//i.test(linkVal)) {
+        if (/^[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}/.test(linkVal)) {
+          linkVal = "https://" + linkVal;
+        } else {
+          alert(`"${l}" must be a valid link starting with http:// or https://.`);
+          if (inp) inp.focus();
+          return null;
+        }
+      }
+      o[l] = linkVal;
+      continue;
+    }
+    o[l] = v;
+  }
+  return o;
+}
 
 const gateList = () => { const D = myDepts()[0]; const E = D ? S.events.filter(e => e.dept === D.id && ["PENDING", "DAPPROVED", "RETURNED", "APPROVED", "CRETURNED"].includes(e.status)) : []; return E.length ? `<div class="tw" style="margin-bottom:14px"><table><tr><th>Approval ID</th><th>Event</th><th>Status</th><th></th></tr>${[...E].reverse().map(e => `<tr><td><code>${esc(e.num)}</code></td><td>${esc(e.title)}</td><td>${badge(e.status)}</td><td>${["APPROVED", "CRETURNED"].includes(e.status) ? `<button class="sm" onclick="evOpen('${e.id}')">Use this Approval ID</button>` : e.status === "RETURNED" ? `<a href="#/events/edit/${e.id}"><button class="sm g">Correct form</button></a>` : "<small>Awaiting approval</small>"}</td></tr>`).join("")}</table></div>` : "" };
 const gateHtml = () => `<div class="card"><h3>Event Organize is locked</h3><p class="lg"><b>No approval → no Event Organize.</b> Enter the Approval ID of an approved event. The college, department, faculty and event are taken from the approval automatically.</p><ol class="lg" style="margin:0 0 12px 18px"><li>Go to <b>Event reporting → + New event approval</b>, fill the approval form and submit it.</li><li>Once it has both approvals, copy its <b>Approval ID</b> (shown as the Form ref / Event ID).</li><li>Come back here, paste that Approval ID below, and the Events Organized report unlocks.</li></ol><div style="margin:0 0 14px"><a href="#/events/new"><button>Fill Event Approval Form</button></a></div>${gateList()}<div style="max-width:420px"><label>Approval ID</label><input id="g_id" placeholder="e.g. IQAC/BGS/DH/01/2026-27"></div><button id="g_go">Verify Approval ID</button><div id="g_out" style="margin-top:10px"></div></div>`;
@@ -1202,31 +1237,90 @@ function monthly(hk, rid) {
   }
   $("#app").innerHTML = `<p><a href="#/monthly">← All headings</a></p><h2>${h[1]} · ${M}</h2><p class="s">${esc(D.name)}</p>
 ${z ? `<div class="card"><span class="b wa">Zero submitted</span> ${esc(z.remarks || "")}<br><button class="g sm" id="uz">Withdraw zero to enter data</button></div>` : ""}
-${z ? "" : EVG && !fe ? gateHtml() : `<div class="card"><h3>${ed ? "Edit record" : EVG ? "Event Organize report" : "Activity done: add a record"}</h3>${EVG ? evBanner(fe) : ""}${h[5] ? `<p class="lg">${h[5]}</p>` : ""}${h[4] ? `<div class="note"><b>Submission guidelines</b><ul style="margin:6px 0 0;padding-left:18px">${h[4].map(g => `<li>${esc(g)}</li>`).join("")}</ul></div>` : ""}<div class="row">${(EVCTX = fe ? evAuto(fe) : null, "")}${F.map((s, i) => fld(s, i, ed && ed.data[s.split("|")[0]])).join("")}${(EVCTX = null, "")}</div>${EVG ? "" : `<button id="sv">${ed ? "Save changes" : "Save record"}</button>`}${ed && !EVG ? ` <a href="#/monthly/${hk}"><button class="g">Cancel</button></a>` : ""}${hk === "evo" ? aiBox() : ""}</div>`}
+${z ? "" : EVG && !fe ? gateHtml() : `<div class="card"><h3>${ed ? "Edit record" : EVG ? "Event Organize report" : "Activity done: add a record"}</h3>${EVG ? evBanner(fe) : ""}${h[5] ? `<p class="lg">${h[5]}</p>` : ""}${h[4] ? `<div class="note"><b>Submission guidelines</b><ul style="margin:6px 0 0;padding-left:18px">${h[4].map(g => `<li>${esc(g)}</li>`).join("")}</ul></div>` : ""}<div class="row">${(EVCTX = fe ? evAuto(fe) : null, "")}${F.map((s, i) => fld(s, i, ed && ed.data[s.split("|")[0]])).join("")}${(EVCTX = null, "")}</div><button id="sv">${ed ? "Save changes" : "Save record"}</button>${ed ? ` <a href="#/monthly/${hk}"><button class="g">Cancel</button></a>` : ""}${hk === "evo" ? aiBox() : ""}</div>`}
 ${rs.length ? `<div class="card"><h3>Records this ${cyclePeriod()} (${rs.length})</h3><div class="tw"><table><tr>${EVG ? "<th>Approval ID</th>" : ""}${CI.map(s => `<th>${esc(s.split("|")[0])}</th>`).join("")}<th></th></tr>${rs.map(r => `<tr>${EVG ? `<td><code>${esc(r.evNum || "No Approval ID (legacy)")}</code></td>` : ""}${CI.map(s => `<td>${esc(r.data[s.split("|")[0]] || "—")}</td>`).join("")}<td><a href="#/monthly/${hk}/v_${r.id}"><button class="g sm">View / print</button></a>${EVG && r.article ? `<button class="g sm" onclick="aiStored('${r.id}')">View article / PDF</button>` : ""}${EVG && r.evId ? (["CRETURNED", "SUBMITTED"].includes((S.events.find(x => x.id === r.evId) || {}).status) ? `<button class="g sm" onclick="evOpen('${r.evId}')">Edit and resubmit</button>` : "") : `${EVG ? "" : `<a href="#/monthly/${hk}/${r.id}"><button class="g sm">Edit</button></a>`}<button class="r sm" onclick="delRec('${r.id}','${hk}')">Delete</button>`}</td></tr>`).join("")}</table></div></div>` : ""}
 ${!rs.length && !z ? `<div class="card"><h3>No activity this ${cyclePeriod()}</h3><label>Remarks (optional)</label><input id="zr" placeholder="e.g. no activity during this ${cyclePeriod()}"><button class="g" id="sz">Submit zero (0)</button></div>` : ""}`;
   if ($("#ai_go")) { AIART = ed && ed.article || null; AIHEAD = hk; AIIMAGES = []; AIOWNER = window.__ACU.uid; $("#ai_go").onclick = () => aiRun(F, h, D); }
   AISUBMIT = null;
-  if ($("#ai_go")) {
-    wireF(F, ed);
-    const form = $("#ai_go").closest(".card"), selectedFiles = FS;
-    const submitReport = async () => {
-      if (submitReport.busy) return; submitReport.busy = true;
-      try { return await doSubmit() } finally { submitReport.busy = false }
-    };
-    const doSubmit = async () => {
-      const d = getF(F, form, selectedFiles); if (!d) return; const files = {};
-      try { for (const l in FO) { files[l] = []; for (const it of FO[l]) { if (it.blob) await fPut(it.id, { name: it.name, type: it.type, blob: it.blob }); files[l].push({ id: it.id, name: it.name, type: it.type, size: it.size }) } } } catch (e) { return alert("Could not store the files in this browser (storage may be full or blocked). Try fewer or smaller files.") }
-      if (EVG) { const e2 = S.events.find(x => x.id === (fe && fe.id)); if (!e2 || e2.dept !== D.id || !["APPROVED", "CRETURNED", "SUBMITTED"].includes(e2.status)) return alert("This Approval ID is no longer valid for Event Organize.") }
-      const rec = ed || { id: uid(), college: D.college, dept: D.id, month: EVG ? dateToM(fe.date) : M, head: hk, by: U.name, files: {}, data: {} };
-      if (ed) { const keep = new Set(Object.values(files).flat().map(x => x.id)); Object.values(ed.files || {}).flat().forEach(x => { if (!keep.has(x.id)) fDel(x.id).catch(() => { }) }) }
-      rec.data = d; rec.files = files; if (EVG && AIART && AIHEAD === "evo") rec.article = JSON.parse(JSON.stringify(AIART)); if (EVG) { rec.evId = fe.id; rec.evNum = fe.num } if (!ed) S.recs.push(rec);
-      if (EVG) { fe.recId = rec.id; fe.status = "SUBMITTED"; fe.comp = { count: +(d["Number of Participants"] || 0), date: fe.date }; fe.hist.push([new Date().toISOString(), "Event Organize report " + (ed ? "resubmitted" : "submitted") + " by " + U.name]); EVU = null }
-      await save(); AIFORM = null; AISUBMIT = null; location.hash = "#/monthly/" + hk; route(); return true
-    };
-    if (EVG) AISUBMIT = submitReport;
-    else if ($("#sv")) $("#sv").onclick = submitReport;
-  }
+  const formCard = ($("#sv") || $("#ai_go"))?.closest(".card") || document;
+  const selectedFiles = FS;
+  wireF(F, ed);
+  const submitReport = async () => {
+    if (submitReport.busy) return;
+    submitReport.busy = true;
+    const btn = $("#sv") || $("#ai_submit");
+    const origText = btn ? btn.textContent : "";
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = ed ? "Saving changes…" : "Saving record…";
+    }
+    try {
+      const ok = await doSubmit();
+      if (!ok && btn) {
+        btn.disabled = false;
+        btn.textContent = origText;
+      }
+      return ok;
+    } catch (err) {
+      console.error("Save record failed:", err);
+      alert("Failed to save record: " + (err?.message || err));
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = origText;
+      }
+    } finally {
+      submitReport.busy = false;
+    }
+  };
+  const doSubmit = async () => {
+    const d = getF(F, formCard, selectedFiles);
+    if (!d) return false;
+    const files = {};
+    try {
+      for (const l in FO) {
+        files[l] = [];
+        for (const it of FO[l]) {
+          if (it.blob) await fPut(it.id, { name: it.name, type: it.type, blob: it.blob });
+          files[l].push({ id: it.id, name: it.name, type: it.type, size: it.size });
+        }
+      }
+    } catch (e) {
+      alert("Could not store the files in this browser (storage may be full or blocked). Try fewer or smaller files.");
+      return false;
+    }
+    if (EVG) {
+      const e2 = S.events.find(x => x.id === (fe && fe.id));
+      if (!e2 || e2.dept !== D.id || !["APPROVED", "CRETURNED", "SUBMITTED"].includes(e2.status)) {
+        alert("This Approval ID is no longer valid for Event Organize.");
+        return false;
+      }
+    }
+    const rec = ed || { id: uid(), college: D.college, dept: D.id, month: EVG ? dateToM(fe.date) : M, head: hk, by: U.name, files: {}, data: {} };
+    if (ed) {
+      const keep = new Set(Object.values(files).flat().map(x => x.id));
+      Object.values(ed.files || {}).flat().forEach(x => { if (!keep.has(x.id)) fDel(x.id).catch(() => { }); });
+    }
+    rec.data = d;
+    rec.files = files;
+    if (EVG && AIART && AIHEAD === "evo") rec.article = JSON.parse(JSON.stringify(AIART));
+    if (EVG) { rec.evId = fe.id; rec.evNum = fe.num; }
+    if (!ed) S.recs.push(rec);
+    if (EVG) {
+      fe.recId = rec.id;
+      fe.status = "SUBMITTED";
+      fe.comp = { count: +(d["Number of Participants"] || 0), date: fe.date };
+      fe.hist.push([new Date().toISOString(), "Event Organize report " + (ed ? "resubmitted" : "submitted") + " by " + U.name]);
+      EVU = null;
+    }
+    await save();
+    AIFORM = null;
+    AISUBMIT = null;
+    location.hash = "#/monthly/" + hk;
+    route();
+    return true;
+  };
+  if (EVG) AISUBMIT = submitReport;
+  if ($("#sv")) $("#sv").onclick = submitReport;
   if ($("#g_go")) $("#g_go").onclick = () => {
     const v = $("#g_id").value.trim().toUpperCase(), o = $("#g_out"); if (!v) return; const e = S.events.find(x => x.num.toUpperCase() === v && x.dept === D.id); if (!e) { o.innerHTML = '<div class="note er">Approval ID not found for your department.</div>'; return }
     const m = { PENDING: "This Approval ID is still awaiting College Dean approval.", DAPPROVED: "This Approval ID is awaiting University Admin final approval.", RETURNED: "This approval was returned for correction. Correct and resubmit the approval form first.", REJECTED: "This approval was rejected. Event Organize is not allowed.", SUBMITTED: "An Event Organize report is already submitted and awaiting verification.", COMPLETED: "This event is already completed and verified." }[e.status]; if (m) { o.innerHTML = `<div class="note er">${m}</div>`; return } EVU = e.id; setM(dateToM(e.date)); monthly("evo")
@@ -1474,7 +1568,8 @@ function articlePreview(e) {
   const body = draft && (draft.body || (draft.sections || []).map(s => `${s.heading}\n${s.content}`).join("\n\n"));
   const content = draft ? `<label for="article-title-${esc(e.id)}">Article title</label><input id="article-title-${esc(e.id)}" value="${esc(draft.title)}"><label for="article-body-${esc(e.id)}">Structured article draft</label><textarea id="article-body-${esc(e.id)}" rows="20" style="line-height:1.6">${esc(body || "")}</textarea><div class="noprint"><button onclick="applyEventArticle('${esc(e.id)}')">Apply to Report</button> <button class="g" onclick="generateEventArticle('${esc(e.id)}')" ${busy ? "disabled" : ""}>Regenerate</button></div>` : "";
   const flow = ["Topic + notes", "Verified event data", "Secure server processing", "OpenAI article generation", "Structured article output", "Review and edit", "Apply to report"];
-  return `<div class="card"><h3>AI Article Generation</h3><p class="s">Drafts use the verified event report and approval details. A human must review the facts and apply the article.</p><ol style="padding-left:24px">${flow.map((step, i) => `<li style="padding:3px 0"><b>${i + 1}.</b> ${step}</li>`).join("")}</ol>${e.status !== "COMPLETED" ? '<div class="note wa">Generation is available after this event is completed and verified.</div>' : `<label for="article-notes-${esc(e.id)}">Topic and writer notes (optional)</label><textarea id="article-notes-${esc(e.id)}" rows="3" placeholder="Editorial focus or context to emphasize; factual claims must be in the verified report.">${esc(articleNotes.get(e.id) || "")}</textarea>${content ? `<div style="border:1px solid var(--ln);border-radius:8px;padding:16px;line-height:1.6">${content}</div>` : `<button onclick="generateEventArticle('${esc(e.id)}')" ${busy ? "disabled" : ""}>${busy ? "Generating article…" : "Generate AI Article"}</button>`}`}${articleErrors.has(e.id) ? `<div class="note er">${esc(articleErrors.get(e.id))}</div>` : ""}${e.article && !articleDrafts.has(e.id) ? '<p class="ok">An article has been applied to this event report.</p>' : ""}</div>`}
+  return `<div class="card"><h3>AI Article Generation</h3><p class="s">Drafts use the verified event report and approval details. A human must review the facts and apply the article.</p><ol style="padding-left:24px">${flow.map((step, i) => `<li style="padding:3px 0"><b>${i + 1}.</b> ${step}</li>`).join("")}</ol>${e.status !== "COMPLETED" ? '<div class="note wa">Generation is available after this event is completed and verified.</div>' : `<label for="article-notes-${esc(e.id)}">Topic and writer notes (optional)</label><textarea id="article-notes-${esc(e.id)}" rows="3" placeholder="Editorial focus or context to emphasize; factual claims must be in the verified report.">${esc(articleNotes.get(e.id) || "")}</textarea>${content ? `<div style="border:1px solid var(--ln);border-radius:8px;padding:16px;line-height:1.6">${content}</div>` : `<button onclick="generateEventArticle('${esc(e.id)}')" ${busy ? "disabled" : ""}>${busy ? "Generating article…" : "Generate AI Article"}</button>`}`}${articleErrors.has(e.id) ? `<div class="note er">${esc(articleErrors.get(e.id))}</div>` : ""}${e.article && !articleDrafts.has(e.id) ? '<p class="ok">An article has been applied to this event report.</p>' : ""}</div>`
+}
 function shrink(f) { return new Promise(r => { const i = new Image; i.onload = () => { const k = Math.min(1, 640 / i.width), c = document.createElement("canvas"); c.width = i.width * k; c.height = i.height * k; c.getContext("2d").drawImage(i, 0, 0, c.width, c.height); r(c.toDataURL("image/jpeg", .6)) }; i.src = URL.createObjectURL(f) }) }
 
 function review() {
@@ -1482,7 +1577,7 @@ function review() {
   const E = myEv();
   const P = E.filter(e => e.status === "PENDING"), D = E.filter(e => e.status === "DAPPROVED"), V = E.filter(e => e.status === "SUBMITTED");
   const deanStage = isSU() || (U && U.role === "dean"), univStage = isGlobal(), verStage = canBackView() || hasPerm('events', 'verify');
-  const open = window.REVIEW_OPEN && E.find(e => e.id === window.REVIEW_OPEN && ["PENDING","DAPPROVED","SUBMITTED"].includes(e.status));
+  const open = window.REVIEW_OPEN && E.find(e => e.id === window.REVIEW_OPEN && ["PENDING", "DAPPROVED", "SUBMITTED"].includes(e.status));
   if (!open) window.REVIEW_OPEN = null;
   const row = e => `<div class="card" style="cursor:pointer;padding:12px 16px" onclick="window.REVIEW_OPEN='${e.id}';review()"><code>${esc(e.num)}</code> ${badge(e.status)} <b style="margin-left:8px">${esc(e.title)}</b> <small style="float:right">${esc(dn(e.dept))} · ${e.date} — Open form →</small></div>`;
   const back = `<button class="g sm" onclick="window.REVIEW_OPEN=null;review()">← Back to approvals</button>`;
@@ -1807,7 +1902,7 @@ function bvList() {
 function backView(tab = "dashboard", id) {
   if (!canBackView()) return;
   if (!workflowOn() && ["dashboard", "submissions", "event", "edit", "review"].includes(tab)) { tab = "heads"; id = null; }
-  
+
   const root = $("#app");
   if (tab === "users") backUsers();
   else if (tab === "review") review();
