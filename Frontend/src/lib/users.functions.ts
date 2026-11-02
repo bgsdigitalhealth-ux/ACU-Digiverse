@@ -70,7 +70,7 @@ export const syncUsers = createServerFn({ method: "POST" })
       role,
       college: prof?.college_id ?? null,
       dept: prof?.dept_id ?? null,
-      global: role === "su" || (!["NONE", "dept", "ca", "dean"].includes(role) && !prof?.college_id && !prof?.dept_id),
+      global: role === "su" || (!["NONE", "dept", "ca", "dean", "hod"].includes(role) && !prof?.college_id && !prof?.dept_id),
       perms: custom[role]?.perms?.["users"] ?? [],
     };
     const isSU = caller.role === "su";
@@ -231,7 +231,7 @@ export const syncUsers = createServerFn({ method: "POST" })
     for (const c of data.creates) {
       let college = c.role === "su" ? null : (c.college || null);
       let dept = c.dept || null;
-      if (c.role === "dept") {
+      if (c.role === "dept" || c.role === "hod") {
         const resolved = await resolveDepartmentAndCollege(college, dept, c.deptName);
         college = resolved.collegeId;
         dept = resolved.deptId;
@@ -309,7 +309,7 @@ export const syncUsers = createServerFn({ method: "POST" })
               siteUrl: redirectTo.replace(/\/reset-password.*$/, ""),
               confirmationUrl,
               name: c.name,
-              role: c.role === "dept" ? "Department User" : c.role,
+              role: c.role === "dept" ? "Department User" : c.role === "hod" ? "Head of Department (HOD)" : c.role,
               college: (colMatch?.data as any)?.name || college || undefined,
               department: dMatch?.name || (dMatch?.data as any)?.name || c.deptName || dept || undefined,
             },
@@ -346,7 +346,7 @@ export const syncUsers = createServerFn({ method: "POST" })
       if (!t) continue;
       let college = u.role === "su" ? null : (u.college || null);
       let dept = u.dept || null;
-      if (u.role === "dept") {
+      if (u.role === "dept" || u.role === "hod") {
         const resolved = await resolveDepartmentAndCollege(college, dept, u.deptName);
         college = resolved.collegeId;
         dept = resolved.deptId;
@@ -490,7 +490,7 @@ export const resendInvite = createServerFn({ method: "POST" })
     ]);
     if (!target) throw new Error("User not found.");
     const role = myRoles?.[0]?.role ?? "NONE";
-    const global = role === "su" || (!['NONE', 'ca', 'dean', 'dept'].includes(role) && !myProf?.college_id && !myProf?.dept_id);
+    const global = role === "su" || (!['NONE', 'ca', 'dean', 'dept', 'hod'].includes(role) && !myProf?.college_id && !myProf?.dept_id);
     if (!global && !(role === "ca" && myProf?.college_id && target.college_id === myProf.college_id))
       throw new Error("Not allowed.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -606,7 +606,7 @@ export const setUserDisabled = createServerFn({ method: "POST" })
       supabase.from("user_roles").select("role").eq("user_id", data.id),
     ]);
     const role = myRoles?.[0]?.role ?? "NONE";
-    const global = role === "su" || (!["NONE", "ca", "dean", "dept"].includes(role) && !myProf?.college_id && !myProf?.dept_id);
+    const global = role === "su" || (!["NONE", "ca", "dean", "dept", "hod"].includes(role) && !myProf?.college_id && !myProf?.dept_id);
     if (!global) throw new Error("Not allowed.");
     if (targetRoles?.some((r) => r.role === "su") && role !== "su") throw new Error("Only a Super Admin can change a Super Admin account.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");

@@ -112,10 +112,11 @@ const canDecide = (e, d) => { const st = approvalStage(e && e.status); if (!st) 
 const canVerify = e => !!e && e.status === "SUBMITTED" && (isGlobal() || (!!eCollege(e) && !!U && U.college === eCollege(e) && !U.dept && U.role !== "dept"));
 const unreadNotices = () => (S.notifications || []).filter(n => !(n.read_by || []).includes(window.__ACU.uid)).length;
 const notifBell = () => { const c = unreadNotices(); return `<a class="acu-bell${c ? " has" : ""}" href="#/notifications" title="Approval notices"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${c ? `<span>${c}</span>` : ""}</a>` };
-if (!S.RN) S.RN = { su: "University Admin", ca: "College Admin", dean: "Dean / Principal", dept: "Department User" };
+if (!S.RN) S.RN = { su: "University Admin", ca: "College Admin", dean: "Dean / Principal", hod: "Head of Department (HOD)", dept: "Department User" };
+if (!S.RN.hod) S.RN.hod = "Head of Department (HOD)";
 const RN = S.RN;
 const cn = id => (S.colleges.find(c => c.id === id) || {}).name || "—", dn = id => (S.depts.find(d => d.id === id) || {}).name || "—";
-const isGlobal = () => isSU() || (U && !['NONE', 'dept', 'ca', 'dean'].includes(U.role) && !U.college && !U.dept);
+const isGlobal = () => isSU() || (U && !['NONE', 'dept', 'hod', 'ca', 'dean'].includes(U.role) && !U.college && !U.dept);
 const myDepts = () => !U ? [] : isGlobal() ? S.depts : U.dept ? S.depts.filter(d => d.id === U.dept) : S.depts.filter(d => d.college === U.college);
 const myCols = () => !U ? [] : isGlobal() ? S.colleges : S.colleges.filter(c => c.id === U.college);
 const workflowOn = () => S.eventWorkflowEnabled === true;
@@ -160,6 +161,7 @@ function route() {
   if (U.role === 'su') T = ["dash", "colleges", "depts", "users", "emails", "roles", "analytics", "reports", "settings"];
   else if (U.role === 'ca') T = ["dash", "depts", "users", "review", "analytics", "reports", "templates"];
   else if (U.role === 'dean') T = ["dash", "review", "events", "analytics", "reports"];
+  else if (U.role === 'hod') T = ["dash", "events", "monthly", "analytics", "reports", "templates"];
   else if (U.role === 'dept') T = ["dash", "events", "monthly", "reports", "templates"];
   else if (S.customRoles && S.customRoles[U.role]) {
     const perms = S.customRoles[U.role].perms || {};
@@ -178,7 +180,7 @@ function route() {
   if (!workflowOn()) T = T.filter(k => !["events", "review", "notifications"].includes(k));
   if (canBackView()) { const ri = T.indexOf("reports"); T.splice(ri < 0 ? T.length : ri + 1, 0, "back"); }
   NAV = T;
-  const L = { back: "BACK VIEW", dash: ({ su: "Super Admin Dashboard", ca: "College Dashboard", dean: "Dean / Principal Dashboard", dept: "Department Dashboard" })[U.role] || (isGlobal() ? "University Dashboard" : `${RN[U.role] || "Custom Role"} Dashboard`), colleges: "Colleges", depts: "Departments", users: "Users", monthly: `${cycleName()} Reporting`, events: "Event Reporting", roles: "Role", review: "Approvals & Verification", reports: "Reports", templates: "Templates", analytics: "Analytics & Export", settings: "Settings", notifications: "Approval Notices" };
+  const L = { back: "BACK VIEW", dash: ({ su: "Super Admin Dashboard", ca: "College Dashboard", dean: "Dean / Principal Dashboard", hod: "HOD Dashboard", dept: "Department Dashboard" })[U.role] || (isGlobal() ? "University Dashboard" : `${RN[U.role] || "Custom Role"} Dashboard`), colleges: "Colleges", depts: "Departments", users: "Users", monthly: `${cycleName()} Reporting`, events: "Event Reporting", roles: "Role", review: "Approvals & Verification", reports: "Reports", templates: "Templates", analytics: "Analytics & Export", settings: "Settings", notifications: "Approval Notices" };
   $("#who").innerHTML = viewSwitch() + (workflowOn() ? notifBell() : "") + `<b>${esc(U.name)}</b><br><small>${RN[U.role] || "Custom Role"}${U.college ? " · " + esc(cn(U.college)) : ""}${U.dept ? " · " + esc(dn(U.dept)) : ""}</small> <button class="g sm" onclick="window.__ACU.changePassword()">Change password</button> <button class="g sm" onclick="window.__ACU.signOut()">Sign out</button>`;
   const I = { dash: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z", colleges: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5", depts: "M3 21h18v-2H3v2zm4-4h10v-4H7v4zm-2-6h14V7H5v4z", users: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", monthly: "M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z", events: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z", roles: "M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z", review: "M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z", reports: "M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z", analytics: "M3 3v18h18M21 9l-5-5-4 4-6-6", settings: "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" };
   if (p[0] === "back" && canBackView()) { const cur = { event: "submissions", edit: "submissions", rec: "heads" }[p[1]] || p[1] || "dashboard"; $("#nav").innerHTML = `<div class="bv-navtitle">BACK VIEW</div>` + [["dashboard", "Dashboard", "dash"], ["submissions", "Submissions", "reports"], ["heads", "Reports (11 heads)", "monthly"], ["users", "Users", "users"], ["review", "Approvals & Verification", "review"], ["activity", "Activity log", "analytics"]].filter(([k]) => workflowOn() || !["submissions", "review", "dashboard"].includes(k)).map(([k, l, ic]) => `<a href="#/back/${k}" class="${cur === k ? "on" : ""}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="${I[ic]}"/></svg> ${l}</a>`).join("") + `<a href="#/dash" class="bv-exit">← Exit BACK VIEW</a>`; backView(p[1], p[2]); return }
@@ -358,9 +360,178 @@ function login() {
   $("#l_g").onclick = () => { const u = S.users.find(x => x.id === $("#l_u").value); if (!u || u.pin !== $("#l_p").value) return alert("Wrong passcode."); try { sessionStorage.setItem("acu_s", u.id) } catch (e) { } U = u; route() }
 }
 
+
+function hodDash() {
+  const D = myDepts(), d = D[0];
+  if (!d) {
+    $("#app").innerHTML = `<h2>HOD Dashboard</h2><div class="card empty">No department is assigned to this HOD account. Ask your College Admin to assign your department.</div>`;
+    return;
+  }
+  const E = myEv(), n = f => E.filter(f).length;
+  const deptRecs = S.recs.filter(r => r.dept === d.id && r.month === M);
+  const deptAllRecs = S.recs.filter(r => r.dept === d.id);
+  const deptUsers = S.users.filter(u => u.dept === d.id);
+  const hodUser = deptUsers.find(u => u.role === "hod") || U;
+  const t = tally([d]);
+  const doneCount = H.filter(h => hs(d.id, h[0]) !== "none").length;
+  const pct = Math.round((doneCount / H.length) * 100);
+
+  const pendingDean = n(e => e.status === "PENDING");
+  const pendingUniv = n(e => e.status === "DAPPROVED");
+  const approved = n(e => ["APPROVED", "CRETURNED"].includes(e.status));
+  const submitted = n(e => e.status === "SUBMITTED");
+  const completed = n(e => e.status === "COMPLETED");
+
+  const pubRecs = deptAllRecs.filter(r => r.head === "pub");
+  const patRecs = deptAllRecs.filter(r => r.head === "pat");
+  const partRecs = deptRecs.filter(r => r.head === "part");
+
+  let h = `
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:8px">
+    <div>
+      <h2 style="margin:0">HOD Dashboard · ${esc(d.name)}</h2>
+      <p class="s" style="margin:4px 0 0">${esc(cn(d.college))} · Head of Department: <b>${esc(d.hod || hodUser.name)}</b></p>
+    </div>
+    <div class="noprint" style="display:flex;gap:8px;flex-wrap:wrap">
+      <a href="#/events/new"><button>+ New Event Approval</button></a>
+      <a href="#/monthly"><button class="g">Monthly Reporting</button></a>
+      <button class="g" onclick="print()">Print Briefing</button>
+    </div>
+  </div>
+  ${mSel()}
+
+  <div class="grid" style="margin-top:14px">
+    <div class="card stat" style="border-top:3px solid ${pct === 100 ? 'var(--ok, #2e7d32)' : 'var(--wa, #ed6c02)'}">
+      <b>${doneCount} / ${H.length}</b>
+      <span>Monthly Compliance (${pct}%)</span>
+    </div>
+    <div class="card stat">
+      <b>${t.data}</b>
+      <span>Headings with Data</span>
+    </div>
+    <div class="card stat">
+      <b>${deptRecs.length}</b>
+      <span>Records This Month (${M})</span>
+    </div>
+    <div class="card stat">
+      <b>${E.length}</b>
+      <span>Department Events</span>
+    </div>
+    <div class="card stat" style="border-top:3px solid ${pendingDean + pendingUniv > 0 ? 'var(--wa, #ed6c02)' : 'var(--ln)'}">
+      <b>${pendingDean + pendingUniv}</b>
+      <span>Approvals In Progress</span>
+    </div>
+    <div class="card stat" style="border-top:3px solid var(--ok, #2e7d32)">
+      <b>${approved + completed}</b>
+      <span>Approved / Completed Events</span>
+    </div>
+    <div class="card stat">
+      <b>${pubRecs.length + patRecs.length}</b>
+      <span>Publications &amp; Patents</span>
+    </div>
+    <div class="card stat">
+      <b>${deptUsers.length}</b>
+      <span>Department Staff / Accounts</span>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+      <h3 style="margin:0">Monthly Reporting Compliance Matrix · ${esc(d.name)} (${M})</h3>
+      <span class="b ${pct === 100 ? 'ok' : 'wa'}">${doneCount === H.length ? 'All 11 Headings Complete' : `${doneCount} of 11 Reported`}</span>
+    </div>
+    <div class="tw">
+      <table>
+        <tr><th class="w-1">#</th><th>Heading</th><th>Status</th><th>Records</th><th class="text-right">Action</th></tr>
+        ${H.map((hx, idx) => {
+          const s = hs(d.id, hx[0]);
+          const cnt = S.recs.filter(r => r.dept === d.id && r.month === M && r.head === hx[0]).length;
+          const statusBadge = s === "data" ? `<span class="b ok">Data entered (${cnt})</span>` : s === "zero" ? '<span class="b wa">Zero (0)</span>' : '<span class="b er">Not reported</span>';
+          return `<tr>
+            <td class="w-1" style="color:var(--mu)">${idx + 1}</td>
+            <td><b style="font-weight:500;font-size:15px">${esc(hx[1])}</b></td>
+            <td>${statusBadge}</td>
+            <td>${cnt}</td>
+            <td class="text-right">
+              <a href="#/monthly/${hx[0]}"><button class="${s === "none" ? "sm" : "g sm"}">${s === "none" ? "Enter Data" : "View / Edit"}</button></a>
+            </td>
+          </tr>`;
+        }).join("")}
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+      <h3 style="margin:0">Department Event Pipeline (${E.length})</h3>
+      <a href="#/events"><button class="g sm">All Department Events →</button></a>
+    </div>
+    <p class="s" style="margin-top:0">Track approval progress, organize reports, and verification for your department.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:13px">
+      <span class="b wa">Pending Dean: ${pendingDean}</span>
+      <span class="b wa">Pending University: ${pendingUniv}</span>
+      <span class="b ok">Approved: ${approved}</span>
+      <span class="b">Organize Submitted: ${submitted}</span>
+      <span class="b ok">Verified &amp; Completed: ${completed}</span>
+    </div>
+    ${E.length ? `<div class="tw"><table><tr><th>Approval ID</th><th>Event Title</th><th>Date</th><th>Mode / Venue</th><th>Status</th><th>Actions</th></tr>
+    ${[...E].reverse().slice(0, 10).map(e => `<tr>
+      <td><a href="#/events/view/${e.id}"><code>${esc(e.num)}</code></a></td>
+      <td><b>${esc(e.title)}</b></td>
+      <td>${e.date}${e.dateTo ? " to " + e.dateTo : ""}</td>
+      <td>${esc(e.mode || "—")} / ${esc(e.venue || "—")}</td>
+      <td>${badge(e.status)}${e.remark && ["RETURNED", "REJECTED", "CRETURNED"].includes(e.status) ? `<br><small>${esc(e.remark)}</small>` : ""}</td>
+      <td style="white-space:nowrap">
+        <a href="#/events/view/${e.id}"><button class="g sm">View</button></a>
+        ${["APPROVED", "CRETURNED"].includes(e.status) ? `<button class="sm" onclick="evOpen('${e.id}','evo')">Organize</button> <button class="sm g" onclick="evOpen('${e.id}','part')">Participation</button>` : e.status === "RETURNED" ? `<a href="#/events/edit/${e.id}"><button class="sm">Correct</button></a>` : ""}
+      </td>
+    </tr>`).join("")}</table></div>` : '<div class="empty">No events organized or submitted by this department yet.</div>'}
+  </div>
+
+  <div class="row" style="margin-top:16px">
+    <div class="card" style="margin:0">
+      <h3>Department Staff &amp; Login Accounts</h3>
+      <p class="s">Users authorized to enter data and report for ${esc(d.name)}.</p>
+      <div class="tw">
+        <table>
+          <tr><th>Name</th><th>Role</th><th>Email</th><th>Status</th></tr>
+          ${deptUsers.map(u => `<tr>
+            <td><b>${esc(u.name)}</b>${u.id === U.id ? ' <span class="b ok" style="font-size:10px">You</span>' : ''}</td>
+            <td>${esc(RN[u.role] || u.role)}</td>
+            <td><small>${esc(u.email || "—")}</small></td>
+            <td><span class="b ${u.status === 'pending' ? 'wa' : 'ok'}">${u.status === 'pending' ? 'Pending' : 'Active'}</span></td>
+          </tr>`).join("")}
+        </table>
+      </div>
+      ${(isGlobal() || U.role === "ca") ? `<p style="margin:12px 0 0"><a href="#/users/assign/${d.id}"><button class="g sm">+ Assign Staff</button></a></p>` : ''}
+    </div>
+
+    <div class="card" style="margin:0">
+      <h3>Activity &amp; Research Summary</h3>
+      <p class="s">Total cumulative records filed across key academic categories.</p>
+      <div class="tw">
+        <table>
+          <tr><th>Category</th><th>Records (${M})</th><th>All-Time</th></tr>
+          <tr><td>Participation in Events</td><td>${deptRecs.filter(r => r.head === "part").length}</td><td>${deptAllRecs.filter(r => r.head === "part").length}</td></tr>
+          <tr><td>Events Organized</td><td>${deptRecs.filter(r => r.head === "evo").length}</td><td>${deptAllRecs.filter(r => r.head === "evo").length}</td></tr>
+          <tr><td>Research Publications</td><td>${deptRecs.filter(r => r.head === "pub").length}</td><td>${pubRecs.length}</td></tr>
+          <tr><td>Patents Filed / Granted</td><td>${deptRecs.filter(r => r.head === "pat").length}</td><td>${patRecs.length}</td></tr>
+          <tr><td>Books &amp; Book Chapters</td><td>${deptRecs.filter(r => r.head === "book").length}</td><td>${deptAllRecs.filter(r => r.head === "book").length}</td></tr>
+          <tr><td>MoUs Signed</td><td>${deptRecs.filter(r => r.head === "mou").length}</td><td>${deptAllRecs.filter(r => r.head === "mou").length}</td></tr>
+          <tr><td>Awards &amp; Medals</td><td>${deptRecs.filter(r => r.head === "awd").length}</td><td>${deptAllRecs.filter(r => r.head === "awd").length}</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+  `;
+
+  $("#app").innerHTML = h;
+}
+
 function dash() {
+  if (U.role === "hod") return hodDash();
   const D = myDepts(), t = tally(D), E = myEv(), n = f => E.filter(f).length; const sub = U.college && S.subs[U.college + "|" + M];
-  let h = `<h2>${esc(({ su: "Super Admin Dashboard", ca: "College Dashboard", dean: "Dean / Principal Dashboard", dept: "Department Dashboard" })[U.role] || (isGlobal() ? "University Dashboard" : `${RN[U.role] || "Custom Role"} Dashboard`))}</h2><p class="s">${isGlobal() ? "Consolidated view of all colleges" : esc(cn(U.college))}. All figures are counted from records entered in this system.</p>${mSel()}<div class="grid" style="margin-top:12px">`;
+  let h = `<h2>${esc(({ su: "Super Admin Dashboard", ca: "College Dashboard", dean: "Dean / Principal Dashboard", hod: "HOD Dashboard", dept: "Department Dashboard" })[U.role] || (isGlobal() ? "University Dashboard" : `${RN[U.role] || "Custom Role"} Dashboard`))}</h2><p class="s">${isGlobal() ? "Consolidated view of all colleges" : esc(cn(U.college))}. All figures are counted from records entered in this system.</p>${mSel()}<div class="grid" style="margin-top:12px">`;
   const st = [...(isGlobal() ? [["Colleges", S.colleges.length]] : []), ["Departments", D.length], ["Reports with data", t.data], ["Zero submissions", t.zero], ["Not reported", t.none], ["Events", E.length], ["Pending college dean approval", n(e => e.status === "PENDING")], ["Pending university approval", n(e => e.status === "DAPPROVED")], ["Verification pending", n(e => e.status === "SUBMITTED")], ["Completed events", n(e => e.status === "COMPLETED")]].filter(([label]) => workflowOn() || !["Events", "Pending college dean approval", "Pending university approval", "Verification pending", "Completed events"].includes(label));
   h += st.map(x => `<div class="card stat"><b>${x[1]}</b><span>${x[0]}</span></div>`).join("") + `</div>`;
   if (!D.length) h += `<div class="card empty" style="margin-top:16px">${isGlobal() ? "Start by adding colleges and users." : hasPerm('dept', 'create') ? "Start by adding departments and department users." : "No department is assigned yet."}</div>`;
@@ -385,20 +556,29 @@ function colleges(a, id) {
     let cfs = S.eventConfs.filter(x => x.college === id);
     if (cfs.length === 0) { S.eventConfs.push({ id: uid(), p1: "IQAC", p2: "BGS", seq: "01", fy: getFinYear(), college: id }); save(); cfs = S.eventConfs.filter(x => x.college === id); }
     const ds = S.depts.filter(d => d.college === id), us = S.users.filter(u => u.college === id);
-    $("#app").innerHTML = `<p><a href="#/colleges">← Colleges</a></p><h2>Manage College: ${esc(c.name)}</h2><div class="card" style="margin-bottom:24px"><h3>Overview</h3><p>Code: <code>${esc(c.code)}</code></p><p>Departments: ${ds.length}</p><p>Users: ${us.length}</p></div><div class="card" style="margin-bottom:24px"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px"><h3 style="margin:0">Assigned Departments</h3><button class="g sm" id="mc_add_dept_toggle" style="margin:0">+ Add Department</button></div><p class="s" style="margin-top:-4px">Departments operating under ${esc(c.name)}.</p><div id="mc_dept_form" style="display:none; background:var(--ac2); border:1px solid var(--ln); border-radius:8px; padding:16px; margin-bottom:16px"><h4 style="margin:0 0 10px; font-size:14px; color:var(--tx)">Add New Department</h4><div class="row"><div><label style="margin-top:0">Department name *</label><input id="mc_dn" placeholder="e.g. Mechanical Engineering"></div><div><label style="margin-top:0">Head of department</label><input id="mc_dh" placeholder="e.g. Dr. Ramesh"></div></div><details style="margin-top:12px"><summary style="font-size:13px; color:var(--ac); cursor:pointer; font-weight:600">Assign Login Users (Optional)</summary><div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--ln)"><p class="s" style="margin:0 0 8px; font-size:12px">Create login accounts scoped to this department.</p><div class="row"><div><label style="margin-top:0">User 1 full name</label><input id="mc_u1n"></div><div><label style="margin-top:0">User 1 email</label><input id="mc_u1e" type="email"></div></div><div class="row" style="margin-top:8px"><div><label style="margin-top:0">User 2 full name</label><input id="mc_u2n"></div><div><label style="margin-top:0">User 2 email</label><input id="mc_u2e" type="email"></div></div></div></details><div style="display:flex; gap:8px; margin-top:14px"><button class="g sm" id="mc_save_dept" style="margin:0">Save Department</button><button class="sm" id="mc_cancel_dept" style="margin:0">Cancel</button></div></div>${ds.length ? `<div class="tw"><table class="department-table"><tr><th>Name</th><th>HOD</th><th>Login Users</th><th>Action</th></tr>${ds.map(d => `<tr><td>${esc(d.name)}</td><td>${esc(d.hod || "—")}</td><td>${esc(S.users.filter(u => u.dept === d.id && u.college === d.college).map(u => u.name).join(", ") || "Not assigned")} ${canMan ? `<a class="department-assign" href="#/users/assign/${d.id}">Assign user</a>` : ""}</td><td style="white-space:nowrap">${isSU() || canMan ? `<button class="g sm" onclick="editDept('${d.id}')">Edit</button> <button class="r sm" onclick="delDept('${d.id}')">Delete</button>` : ""}</td></tr>`).join("")}</table></div>` : '<div class="empty">No departments assigned to this college yet.</div>'}</div><div class="card" style="margin-bottom:24px"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px"><h3 style="margin:0">Event ID Configurations</h3><button class="g sm" id="c_add_conf" style="margin:0">+ Add New</button></div><p class="s" style="margin-top:-4px">Set multiple Event ID formats for ${esc(c.code)}. Departments can choose which format to use when creating an event.</p><div class="tw"><table><tr><th>Prefix 1</th><th>Prefix 2</th><th>Next Sequence</th><th>Financial Year</th><th>Action</th></tr>${cfs.map(conf => `<tr><td><input id="p1_${conf.id}" value="${esc(conf.p1)}" style="margin:0; min-width:80px"></td><td><input id="p2_${conf.id}" value="${esc(conf.p2)}" style="margin:0; min-width:80px"></td><td><input id="sq_${conf.id}" value="${esc(conf.seq)}" style="margin:0; min-width:60px" title="E.g. '01'"></td><td><input value="${esc(getFinYear())}" style="margin:0; min-width:80px" disabled></td><td style="white-space:nowrap"><button class="g sm c_save_conf" data-id="${conf.id}" style="margin:0 4px 0 0">Save</button><button class="r sm c_del_conf" data-id="${conf.id}" style="margin:0" ${cfs.length === 1 ? "disabled" : ""}>Delete</button></td></tr>`).join("")}</table></div></div>`;
+    $("#app").innerHTML = `<p><a href="#/colleges">← Colleges</a></p><h2>Manage College: ${esc(c.name)}</h2><div class="card" style="margin-bottom:24px"><h3>Overview</h3><p>Code: <code>${esc(c.code)}</code></p><p>Departments: ${ds.length}</p><p>Users: ${us.length}</p></div><div class="card" style="margin-bottom:24px"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px"><h3 style="margin:0">Assigned Departments</h3><button class="g sm" id="mc_add_dept_toggle" style="margin:0">+ Add Department</button></div><p class="s" style="margin-top:-4px">Departments operating under ${esc(c.name)}.</p><div id="mc_dept_form" style="display:none; background:var(--ac2); border:1px solid var(--ln); border-radius:8px; padding:16px; margin-bottom:16px"><h4 style="margin:0 0 10px; font-size:14px; color:var(--tx)">Add New Department</h4><div class="row"><div><label style="margin-top:0">Department name *</label><input id="mc_dn" placeholder="e.g. Mechanical Engineering"></div><div><label style="margin-top:0">HOD full name</label><input id="mc_dh" placeholder="e.g. Dr. Ramesh"></div><div><label style="margin-top:0">HOD email ID (for login)</label><input id="mc_dhe" type="email" placeholder="e.g. ramesh.hod@college.edu"></div></div><details style="margin-top:12px"><summary style="font-size:13px; color:var(--ac); cursor:pointer; font-weight:600">Assign Login Users (Optional)</summary><div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--ln)"><p class="s" style="margin:0 0 8px; font-size:12px">Create login accounts scoped to this department.</p><div class="row"><div><label style="margin-top:0">User 1 full name</label><input id="mc_u1n"></div><div><label style="margin-top:0">User 1 email</label><input id="mc_u1e" type="email"></div></div><div class="row" style="margin-top:8px"><div><label style="margin-top:0">User 2 full name</label><input id="mc_u2n"></div><div><label style="margin-top:0">User 2 email</label><input id="mc_u2e" type="email"></div></div></div></details><div style="display:flex; gap:8px; margin-top:14px"><button class="g sm" id="mc_save_dept" style="margin:0">Save Department</button><button class="sm" id="mc_cancel_dept" style="margin:0">Cancel</button></div></div>${ds.length ? `<div class="tw"><table class="department-table"><tr><th>Name</th><th>HOD</th><th>Login Users</th><th>Action</th></tr>${ds.map(d => {
+  const hodU = S.users.find(u => u.dept === d.id && u.role === "hod");
+  const deptUsers = S.users.filter(u => u.dept === d.id && u.college === d.college && u.role === "dept");
+  return `<tr><td><b>${esc(d.name)}</b></td><td>${esc(d.hod || (hodU ? hodU.name : "—"))}${hodU ? `<br><span class="b ok" style="font-size:11px">HOD Login: ${esc(hodU.email)}</span>` : (canMan ? `<br><a class="department-assign" href="#/users/assign-hod/${d.id}">Assign HOD</a>` : "")}</td><td>${esc(deptUsers.map(u => u.name).join(", ") || "Not assigned")} ${canMan ? `<br><a class="department-assign" href="#/users/assign/${d.id}">Assign Staff User</a>` : ""}</td><td style="white-space:nowrap">${isSU() || canMan ? `<button class="g sm" onclick="editDept('${d.id}')">Edit</button> <button class="r sm" onclick="delDept('${d.id}')">Delete</button>` : ""}</td></tr>`;
+}).join("")}</table></div>` : '<div class="empty">No departments assigned to this college yet.</div>'}</div><div class="card" style="margin-bottom:24px"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px"><h3 style="margin:0">Event ID Configurations</h3><button class="g sm" id="c_add_conf" style="margin:0">+ Add New</button></div><p class="s" style="margin-top:-4px">Set multiple Event ID formats for ${esc(c.code)}. Departments can choose which format to use when creating an event.</p><div class="tw"><table><tr><th>Prefix 1</th><th>Prefix 2</th><th>Next Sequence</th><th>Financial Year</th><th>Action</th></tr>${cfs.map(conf => `<tr><td><input id="p1_${conf.id}" value="${esc(conf.p1)}" style="margin:0; min-width:80px"></td><td><input id="p2_${conf.id}" value="${esc(conf.p2)}" style="margin:0; min-width:80px"></td><td><input id="sq_${conf.id}" value="${esc(conf.seq)}" style="margin:0; min-width:60px" title="E.g. '01'"></td><td><input value="${esc(getFinYear())}" style="margin:0; min-width:80px" disabled></td><td style="white-space:nowrap"><button class="g sm c_save_conf" data-id="${conf.id}" style="margin:0 4px 0 0">Save</button><button class="r sm c_del_conf" data-id="${conf.id}" style="margin:0" ${cfs.length === 1 ? "disabled" : ""}>Delete</button></td></tr>`).join("")}</table></div></div>`;
     if ($("#mc_add_dept_toggle")) $("#mc_add_dept_toggle").onclick = () => { const f = $("#mc_dept_form"); if (f) f.style.display = f.style.display === "none" ? "block" : "none"; };
     if ($("#mc_cancel_dept")) $("#mc_cancel_dept").onclick = () => { const f = $("#mc_dept_form"); if (f) f.style.display = "none"; };
     if ($("#mc_save_dept")) $("#mc_save_dept").onclick = async () => {
       const dn = $("#mc_dn").value.trim();
       if (!dn) return alert("Department name required.");
       if (S.depts.some(d => d.college === id && d.name.toLowerCase() === dn.toLowerCase())) return alert("Department with this name already exists in this college.");
+      const hodName = $("#mc_dh").value.trim(), hodEmail = $("#mc_dhe") ? $("#mc_dhe").value.trim().toLowerCase() : "";
+      if (hodEmail && !/^[^s@]+@[^s@]+.[^s@]+$/.test(hodEmail)) return alert("Please enter a valid email for the HOD.");
       const accounts = ["1", "2"].map(s => ({ name: $("#mc_u" + s + "n").value.trim(), email: $("#mc_u" + s + "e").value.trim().toLowerCase() })).filter(u => u.name || u.email);
-      if (accounts.some(u => !u.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u.email))) return alert("For each login user, enter both a name and a valid email.");
+      if (accounts.some(u => !u.name || !/^[^s@]+@[^s@]+.[^s@]+$/.test(u.email))) return alert("For each login user, enter both a name and a valid email.");
       if (accounts.length === 2 && accounts[0].email === accounts[1].email) return alert("User 1 and User 2 need different email addresses.");
       const allEmails = new Set(S.users.map(u => (u.email || "").toLowerCase()).filter(Boolean));
+      if (hodEmail && allEmails.has(hodEmail)) return alert(`Email "${hodEmail}" is already used by another account.`);
       for (const u of accounts) { if (allEmails.has(u.email)) return alert(`Email "${u.email}" is already used by another account.`); }
+      if (hodEmail && accounts.some(u => u.email === hodEmail)) return alert("HOD and Department Users need different email addresses.");
       const did = uid();
-      S.depts.push({ id: did, college: id, name: dn, code: dn.substring(0, 4).toUpperCase(), hod: $("#mc_dh").value.trim() });
+      S.depts.push({ id: did, college: id, name: dn, code: dn.substring(0, 4).toUpperCase(), hod: hodName });
+      if (hodEmail) S.users.push({ id: uid(), name: hodName || "HOD " + dn, email: hodEmail, role: "hod", college: id, dept: did, pending: true });
       accounts.forEach(u => S.users.push({ id: uid(), ...u, role: "dept", college: id, dept: did, pending: true }));
       $("#mc_save_dept").disabled = true;
       await save();
@@ -519,13 +699,35 @@ window.delDept = async id => {
 };
 function depts(a, fid) {
   const gl = isGlobal(); let cid = U.college; if (gl && a === "college" && fid) cid = fid; const list = gl ? (cid && a === "college" ? S.depts.filter(d => d.college === cid) : S.depts) : myDepts(); const su = isSU();
-  $("#app").innerHTML = `<h2>Departments</h2><p class="s">${gl ? "All colleges and their departments." : esc(cn(cid)) + "."} Add a department and, optionally, create its login user at the same time.</p>${gl ? `<div class="card"><label>Show college</label><select id="d_f"><option value="">All colleges</option>${S.colleges.map(c => `<option value="${c.id}" ${a === "college" && fid === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>` : ""}<div class="card"><div class="row">${gl ? `<div><label>College *</label><select id="d_c">${S.colleges.map(c => `<option value="${c.id}" ${cid === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>` : ""}<div><label>Department name *</label><input id="d_n"></div><div><label>Head of department</label><input id="d_h"></div></div>
+  $("#app").innerHTML = `<h2>Departments</h2><p class="s">${gl ? "All colleges and their departments." : esc(cn(cid)) + "."} Add a department and, optionally, create its login user at the same time.</p>${gl ? `<div class="card"><label>Show college</label><select id="d_f"><option value="">All colleges</option>${S.colleges.map(c => `<option value="${c.id}" ${a === "college" && fid === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>` : ""}<div class="card"><div class="row">${gl ? `<div><label>College *</label><select id="d_c">${S.colleges.map(c => `<option value="${c.id}" ${cid === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>` : ""}<div><label>Department name *</label><input id="d_n"></div></div>
+<h3 style="margin-top:16px">Head of Department (HOD)</h3><div class="row"><div><label for="d_h">HOD full name</label><input id="d_h" placeholder="e.g. Dr. Ramesh Kumar"></div><div><label for="d_he">HOD email ID (for HOD login)</label><input id="d_he" type="email" placeholder="e.g. ramesh.hod@college.edu"></div></div>
 <h3 style="margin-top:16px">Department User 1 (optional)</h3><div class="row"><div><label for="d_un">User 1 full name</label><input id="d_un"></div><div><label for="d_ue">User 1 email ID</label><input id="d_ue" type="email"></div></div>
 <h3 style="margin-top:16px">Department User 2 (optional)</h3><div class="row"><div><label for="d_un2">User 2 full name</label><input id="d_un2"></div><div><label for="d_ue2">User 2 email ID</label><input id="d_ue2" type="email"></div></div>
 <button id="d_g" style="margin-top:16px">Add department</button></div>
-<div class="card">${list.length ? `<div class="tw"><table class="department-table"><tr>${gl ? "<th>College</th>" : ""}<th>Name</th><th>HOD</th><th>Login user</th>${su ? "<th>Action</th>" : ""}</tr>${list.map(d => `<tr>${gl ? `<td>${esc(cn(d.college))}</td>` : ""}<td>${esc(d.name)}</td><td>${esc(d.hod || "—")}</td><td>${esc(S.users.filter(u => u.dept === d.id && u.college === d.college).map(u => u.name).join(", ") || "Not assigned")}${gl || U.role === "ca" ? `<a class="department-assign" href="#/users/assign/${d.id}">Assign user</a>` : ""}</td>${su ? `<td class="department-actions"><button class="g sm" onclick="editDept('${d.id}')">Edit</button> <button class="r sm" onclick="delDept('${d.id}')">Delete</button></td>` : ""}</tr>`).join("")}</table></div>` : '<div class="empty">No departments yet.</div>'}</div>`;
+<div class="card">${list.length ? `<div class="tw"><table class="department-table"><tr>${gl ? "<th>College</th>" : ""}<th>Name</th><th>HOD</th><th>Login user</th>${su ? "<th>Action</th>" : ""}</tr>${list.map(d => {
+  const hodU = S.users.find(u => u.dept === d.id && u.role === "hod");
+  const deptUsers = S.users.filter(u => u.dept === d.id && u.role === "dept");
+  return `<tr>${gl ? `<td>${esc(cn(d.college))}</td>` : ""}<td><b>${esc(d.name)}</b></td><td>${esc(d.hod || (hodU ? hodU.name : "—"))}${hodU ? `<br><span class="b ok" style="font-size:11px">HOD Login: ${esc(hodU.email)}</span>` : (gl || U.role === "ca" ? `<br><a class="department-assign" href="#/users/assign-hod/${d.id}">Assign HOD</a>` : "")}</td><td>${esc(deptUsers.map(u => u.name).join(", ") || "Not assigned")}${gl || U.role === "ca" ? `<br><a class="department-assign" href="#/users/assign/${d.id}">Assign Staff User</a>` : ""}</td>${su ? `<td class="department-actions"><button class="g sm" onclick="editDept('${d.id}')">Edit</button> <button class="r sm" onclick="delDept('${d.id}')">Delete</button></td>` : ""}</tr>`;
+}).join("")}</table></div>` : '<div class="empty">No departments yet.</div>'}</div>`;
   if ($("#d_f")) $("#d_f").onchange = e => { location.hash = e.target.value ? "#/depts/college/" + e.target.value : "#/depts" };
-  $("#d_g").onclick = async () => { const n = $("#d_n").value.trim(); if (!n) return alert("Name required."); const c = gl ? ($("#d_c") ? $("#d_c").value : "") : cid; if (!c) return alert("Create a college first."); const accounts = ["", "2"].map(suffix => ({ name: $("#d_un" + suffix).value.trim(), email: $("#d_ue" + suffix).value.trim().toLowerCase() })).filter(user => user.name || user.email); if (accounts.some(user => !user.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email))) return alert("For each Department User, enter both a name and a valid email."); if (accounts.length === 2 && accounts[0].email === accounts[1].email) return alert("The two Department Users need different email addresses."); const did = uid(); S.depts.push({ id: did, college: c, name: n, code: n.substring(0, 4).toUpperCase(), hod: $("#d_h").value.trim() }); accounts.forEach(user => S.users.push({ id: uid(), ...user, role: "dept", college: c, dept: did, pending: true })); $("#d_g").disabled = true; await save(); route() }
+  $("#d_g").onclick = async () => {
+    const n = $("#d_n").value.trim(); if (!n) return alert("Name required.");
+    const c = gl ? ($("#d_c") ? $("#d_c").value : "") : cid; if (!c) return alert("Create a college first.");
+    const hodName = $("#d_h").value.trim(), hodEmail = $("#d_he") ? $("#d_he").value.trim().toLowerCase() : "";
+    if (hodEmail && !/^[^s@]+@[^s@]+.[^s@]+$/.test(hodEmail)) return alert("Please enter a valid email for the HOD.");
+    const accounts = ["", "2"].map(suffix => ({ name: $("#d_un" + suffix).value.trim(), email: $("#d_ue" + suffix).value.trim().toLowerCase() })).filter(user => user.name || user.email);
+    if (accounts.some(user => !user.name || !/^[^s@]+@[^s@]+.[^s@]+$/.test(user.email))) return alert("For each Department User, enter both a name and a valid email.");
+    if (accounts.length === 2 && accounts[0].email === accounts[1].email) return alert("The two Department Users need different email addresses.");
+    const allEmails = new Set(S.users.map(u => (u.email || "").toLowerCase()).filter(Boolean));
+    if (hodEmail && allEmails.has(hodEmail)) return alert(`Email "${hodEmail}" is already used by another account.`);
+    for (const u of accounts) { if (allEmails.has(u.email)) return alert(`Email "${u.email}" is already used by another account.`); }
+    if (hodEmail && accounts.some(u => u.email === hodEmail)) return alert("HOD and Department Users need different email addresses.");
+    const did = uid();
+    S.depts.push({ id: did, college: c, name: n, code: n.substring(0, 4).toUpperCase(), hod: hodName });
+    if (hodEmail) S.users.push({ id: uid(), name: hodName || "HOD " + n, email: hodEmail, role: "hod", college: c, dept: did, pending: true });
+    accounts.forEach(user => S.users.push({ id: uid(), ...user, role: "dept", college: c, dept: did, pending: true }));
+    $("#d_g").disabled = true; await save(); route();
+  };
 }
 window.delUser = (id) => {
   const target = S.users.find(x => x.id === id);
@@ -977,6 +1179,80 @@ function users(action, id) {
   const gl = isGlobal();
   const canCre = gl || hasPerm('users', 'create');
 
+  if (action === "assign-hod" && id) {
+    let department = S.depts.find(d => d.id === id);
+    if (!department && id) {
+      department = S.depts.find(d => (d.name || "").toLowerCase() === id.toLowerCase() || (d.code || "").toLowerCase() === id.toLowerCase());
+    }
+    if (!department || !(gl || (U.role === "ca" && U.college === department.college))) return route();
+    const currentHod = S.users.find(u => u.dept === department.id && u.role === "hod");
+    const candidates = S.users.filter(u => (u.college === department.college || (gl && !u.college)) && u.id !== (currentHod && currentHod.id));
+
+    $("#app").innerHTML = `
+      <p><a href="#/depts/college/${department.college}">← Back to Departments</a></p>
+      <h2>Assign Head of Department (HOD)</h2>
+      <p class="s">${esc(department.name)} · ${esc(cn(department.college))}</p>
+      <div class="note">
+        <b>Current HOD:</b> ${esc(department.hod || "None set")}
+        ${currentHod ? `<br><b>Assigned Login:</b> ${esc(currentHod.name)} (${esc(currentHod.email)})` : "<br><em>No active HOD login account assigned yet.</em>"}
+      </div>
+
+      <div class="card assignment-form">
+        <h3 style="margin:0 0 8px">Create &amp; Assign New HOD Account</h3>
+        <label for="nah_name">HOD Full Name</label>
+        <input id="nah_name" maxlength="100" placeholder="e.g. Dr. Rajesh Kumar" value="${esc(department.hod || "")}">
+        <label for="nah_email">HOD Email ID</label>
+        <input id="nah_email" type="email" maxlength="255" placeholder="e.g. rajesh.hod@college.edu">
+        <label for="nah_dept">Department</label>
+        <input id="nah_dept" value="${esc(department.name)}" disabled style="background:#F5F5F5;font-weight:600">
+        <button id="nah_save">Create HOD User &amp; Send Invitation</button>
+        <p class="s">The HOD can open the executive HOD Dashboard, review compliance, and manage departmental reporting and events.</p>
+      </div>
+
+      <div class="card assignment-form">
+        <h3 style="margin:0 0 8px">Or Assign an Existing User as HOD</h3>
+        <label for="assign_hod_user">Select User from College</label>
+        <select id="assign_hod_user">
+          <option value="">Select user</option>
+          ${candidates.map(u => `<option value="${u.id}">${esc(u.name)} (${esc(RN[u.role] || u.role)})${u.dept ? " · " + esc(dn(u.dept)) : ""}</option>`).join("")}
+        </select>
+        <button id="assign_hod_save" ${candidates.length ? "" : "disabled"}>Save HOD Assignment</button>
+      </div>
+    `;
+
+    $("#nah_save").onclick = async () => {
+      const n = $("#nah_name").value.trim(), e = $("#nah_email").value.trim().toLowerCase();
+      if (!n) return alert("Enter HOD full name.");
+      if (!/^[^s@]+@[^s@]+.[^s@]+$/.test(e)) return alert("Enter a valid email address.");
+      if (S.users.some(u => (u.email || "").toLowerCase() === e)) return alert("A user with this email already exists.");
+      const btn = $("#nah_save"); btn.disabled = true; btn.textContent = "Creating…";
+      department.hod = n;
+      if (currentHod) currentHod.role = "dept";
+      S.users.push({ id: uid(), name: n, role: "hod", college: department.college, dept: department.id, email: e, pending: true });
+      await save();
+      alert(`HOD ${n} assigned to ${department.name}. An invitation was sent to ${e}.`);
+      location.hash = "#/depts/college/" + department.college;
+      route();
+    };
+
+    $("#assign_hod_save").onclick = async () => {
+      const user = candidates.find(u => u.id === $("#assign_hod_user").value);
+      if (!user) return alert("Select a user to assign as HOD.");
+      if (!confirm(`Assign ${user.name} as Head of Department (HOD) for ${department.name}?`)) return;
+      const btn = $("#assign_hod_save"); btn.disabled = true; btn.textContent = "Saving…";
+      department.hod = user.name;
+      if (currentHod && currentHod.id !== user.id) currentHod.role = "dept";
+      user.role = "hod";
+      user.college = department.college;
+      user.dept = department.id;
+      await save();
+      alert(`${user.name} is now assigned as HOD for ${department.name}.`);
+      location.hash = "#/depts/college/" + department.college;
+      route();
+    };
+    return;
+  }
+
   if (action === "assign" && id) {
     let department = S.depts.find(d => d.id === id);
     if (!department && id) {
@@ -1035,8 +1311,9 @@ function users(action, id) {
               <select id="eu_r" ${u.role === 'su' ? 'disabled' : ''}>
                  ${u.role === 'su' ? `<option value="su" selected>${esc(RN.su)}</option>` : `${gl ? `<option value="ca" ${u.role === 'ca' ? 'selected' : ''}>${esc(RN.ca)}</option>
                  <option value="dean" ${u.role === 'dean' ? 'selected' : ''}>${esc(RN.dean)}</option>` : ``}
+                 <option value="hod" ${u.role === 'hod' ? 'selected' : ''}>${esc(RN.hod || "Head of Department (HOD)")}</option>
                  <option value="dept" ${u.role === 'dept' ? 'selected' : ''}>${esc(RN.dept)}</option>
-                 ${Object.keys(S.customRoles || {}).filter(k => !['ca', 'dean', 'dept'].includes(k)).map(k => `<option value="${k}" ${u.role === k ? 'selected' : ''}>${esc(RN[k] || k)}</option>`).join("")}`}
+                 ${Object.keys(S.customRoles || {}).filter(k => !['ca', 'dean', 'dept', 'hod'].includes(k)).map(k => `<option value="${k}" ${u.role === k ? 'selected' : ''}>${esc(RN[k] || k)}</option>`).join("")}`}
 
               </select>
            </div>
@@ -1059,7 +1336,7 @@ function users(action, id) {
       const r = $("#eu_r").value;
       const c = gl ? $("#eu_c").value : U.college;
       if ($("#eu_cw")) $("#eu_cw").hidden = !(gl && r !== "su");
-      if ($("#eu_dw")) $("#eu_dw").hidden = (r !== "dept" && r !== "ca");
+      if ($("#eu_dw")) $("#eu_dw").hidden = (r !== "dept" && r !== "hod" && r !== "ca");
       if ($("#eu_d")) $("#eu_d").innerHTML = `<option value="">Not assigned</option>` +
         S.depts.filter(d => d.college === c).map(d => `<option value="${d.id}" ${u.dept === d.id ? "selected" : ""}>${esc(d.name)}</option>`).join("");
     };
@@ -1072,13 +1349,17 @@ function users(action, id) {
         c = r === "su" ? null : (gl ? $("#eu_c").value : U.college),
         d = $("#eu_dw").hidden ? null : $("#eu_d").value;
       if (!n) return alert("Name required.");
-      if (["ca", "dean", "dept"].includes(r) && !c) return alert("Select a college.");
-      if (r === "dept" && !S.depts.some(x => x.id === d && x.college === c)) return alert("Select a department for this user.");
+      if (["ca", "dean", "dept", "hod"].includes(r) && !c) return alert("Select a college.");
+      if ((r === "dept" || r === "hod") && !S.depts.some(x => x.id === d && x.college === c)) return alert("Select a department for this user.");
 
       u.name = n;
       u.role = r;
       u.college = c;
       u.dept = d;
+      if (r === "hod" && d) {
+        const depObj = S.depts.find(x => x.id === d);
+        if (depObj) depObj.hod = n;
+      }
 
       $("#eu_s").disabled = true;
       await save();
@@ -1477,7 +1758,7 @@ function delRec(id, hk) { if (confirm("Delete this record?")) { const r0 = S.rec
 
 function events(a, id) {
   if (!workflowOn()) return workflowUnavailable();
-  const isD = U.role === "dept" || hasPerm('events', 'create'), D = myDepts()[0], E = myEv();
+  const isD = U.role === "dept" || U.role === "hod" || hasPerm('events', 'create'), D = myDepts()[0], E = myEv();
   if (a === "new" || a === "edit") {
     if (!D) { $("#app").innerHTML = '<h2>Event approval form</h2><div class="note">No department is assigned to this account. Ask your administrator to assign a department before creating an approval.</div>'; return }
     const e = a === "edit" && S.events.find(x => x.id === id), g = k => esc(e && e[k] || ""), sp = e && e.speakers || [], TY = ["Seminar", "Conference", "Workshop", "Training", "Short Term Course", "FDP", "Special Lecture", "Sports", "Cultural", "Co-curricular", "Extra Curricular", "Other"], oth = e && !TY.includes(e.type);
@@ -1968,7 +2249,7 @@ ${on ? `<label>College</label><select id="vs_c" onchange="document.getElementByI
 <label>Department</label><select id="vs_d" onchange="setView()"><option value="">All / none</option>${ds.map(d => `<option value="${d.id}" ${U.dept === d.id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select>
 <button class="g sm vs-back" style="margin-top:6px" onclick="sessionStorage.removeItem('acu_view');route()">&larr; Back to Super Admin</button>`: ""}</div>`
 }
-function setView() { const g = i => { const e = document.getElementById(i); return e ? e.value : "" }; const r = g("vs_r"); if (r === "su") sessionStorage.removeItem("acu_view"); else { let c = g("vs_c"), d = g("vs_d"); if (!c && S.colleges.length && r !== "dept") c = S.colleges[0].id; if (d) { const dd = S.depts.find(x => x.id === d); if (dd) c = dd.college } if (r === "dept" && !d) { const dd = S.depts.find(x => !c || x.college === c); if (dd) { d = dd.id; c = dd.college } } sessionStorage.setItem("acu_view", JSON.stringify({ role: r, college: c, dept: d })) } location.hash = "#/dash"; route() }
+function setView() { const g = i => { const e = document.getElementById(i); return e ? e.value : "" }; const r = g("vs_r"); if (r === "su") sessionStorage.removeItem("acu_view"); else { let c = g("vs_c"), d = g("vs_d"); if (!c && S.colleges.length && r !== "dept") c = S.colleges[0].id; if (d) { const dd = S.depts.find(x => x.id === d); if (dd) c = dd.college } if ((r === "dept" || r === "hod") && !d) { const dd = S.depts.find(x => !c || x.college === c); if (dd) { d = dd.id; c = dd.college } } sessionStorage.setItem("acu_view", JSON.stringify({ role: r, college: c, dept: d })) } location.hash = "#/dash"; route() }
 window.setView = setView;
 
 window.resendInv = async function (btn, id) { btn.disabled = true; btn.textContent = "Sending…"; try { await window.__ACU.resendInvite(id); btn.textContent = "Sent ✓"; setTimeout(() => { btn.disabled = false; btn.textContent = "Resend invite" }, 60000) } catch (e) { alert("Invite link sent successfully"); btn.disabled = false; btn.textContent = "Resend invite" } };
