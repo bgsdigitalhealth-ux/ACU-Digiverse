@@ -156,7 +156,7 @@ function route() {
   if (MPREV !== null && !(location.hash || "").startsWith("#/monthly/evo") && !(location.hash || "").startsWith("#/monthly/part")) { M = MPREV; MPREV = null }
   document.body.classList.remove('is-login');
   $("#app").classList.remove("back-workspace"); document.body.classList.toggle("in-back", (location.hash || "").startsWith("#/back"));
-  const p = (location.hash || "#/dash").slice(2).split("/"); if (!location.hash && !window.__ACU_LANDED) { window.__ACU_LANDED = 1; const me = S.users.find(u => u.id === window.__ACU.uid); if (me && me.role === "dept") { location.replace("#/monthly"); p[0] = "monthly" } }
+  const p = (location.hash || "#/dash").slice(2).split("/"); if (!location.hash && !window.__ACU_LANDED) { window.__ACU_LANDED = 1; location.replace("#/dash"); p[0] = "dash"; }
   U = S.users.find(u => u.id === window.__ACU.uid) || null; window.REALU = U; window.PORTAL = null; { let P = null; try { P = sessionStorage.getItem("acu_portal") } catch (e) { } if (P) { const pc = S.colleges.find(c => String(c.code || "").toLowerCase() === P); if (!pc) { try { sessionStorage.removeItem("acu_portal") } catch (e) { } } else if (U && U.role === "su") { try { sessionStorage.removeItem("acu_view") } catch (e) { } U = Object.assign({}, U, { role: "ca", college: pc.id, dept: null }); window.PORTAL = pc } else if (!U || U.college !== pc.id) { $("#nav").innerHTML = ""; $("#who").innerHTML = `<button class="g sm" onclick="window.__ACU.signOut()">Sign out</button>`; $("#app").innerHTML = `<h2>Access denied</h2><p class="s">This account is not authorized to access ${esc(pc.name)}.</p><button onclick="try{sessionStorage.removeItem('acu_portal')}catch(e){};location.href='/'">Go back</button>`; return } else window.PORTAL = pc } } if (U && U.role === "su" && !window.PORTAL) { let v = null; try { v = JSON.parse(sessionStorage.getItem("acu_view") || "null") } catch (e) { } if (v && v.role && v.role !== "su") U = Object.assign({}, U, { role: v.role, college: v.college || null, dept: v.dept || null }) } if (!U || !U.role || U.role === "NONE") { $("#nav").innerHTML = ""; $("#who").innerHTML = `<button class="g sm" onclick="window.__ACU.signOut()">Sign out</button>`; $("#app").innerHTML = `<h2>No access yet</h2><p class="s">Your account has no role assigned. Please ask your administrator.</p>`; return }
   let T = [];
   if (U.role === 'su') T = ["dash", "colleges", "depts", "users", "emails", "roles", "analytics", "reports", "settings"];
@@ -529,8 +529,129 @@ function hodDash() {
   $("#app").innerHTML = h;
 }
 
+function deptDash() {
+  const D = myDepts(), d = D[0];
+  if (!d) {
+    $("#app").innerHTML = `<h2>Department Dashboard</h2><div class="card empty">No department is assigned to this account. Ask your College Admin to assign your department.</div>`;
+    return;
+  }
+  const E = myEv(), n = f => E.filter(f).length;
+  const doneCount = H.filter(h => hs(d.id, h[0]) !== "none").length;
+  const pct = Math.round((doneCount / H.length) * 100);
+  const pendingDean = n(e => e.status === "PENDING");
+  const pendingUniv = n(e => e.status === "DAPPROVED");
+  const approved = n(e => e.status === "APPROVED");
+  const submitted = n(e => e.status === "SUBMITTED");
+  const completed = n(e => e.status === "COMPLETED");
+
+  let h = `
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:8px">
+    <div>
+      <h2 style="margin:0">Department Dashboard · ${esc(d.name)}</h2>
+      <p class="s" style="margin:4px 0 0">${esc(cn(d.college))} · Logged in as: <b>${esc(U.name)}</b> (${esc(RN[U.role] || "Department User")})</p>
+    </div>
+    <div class="noprint" style="display:flex;gap:8px;flex-wrap:wrap">
+      <a href="#/monthly"><button>Monthly Reporting</button></a>
+      <a href="#/events/new"><button class="g">+ New Event Approval</button></a>
+      <a href="#/events/new/part"><button class="g">+ New Participation Approval</button></a>
+      <button class="g" onclick="print()">Print</button>
+    </div>
+  </div>
+  ${mSel()}
+
+  <div class="grid" style="margin-top:14px">
+    <div class="card stat" style="border-top:3px solid ${doneCount === H.length ? 'var(--ok, #2e7d32)' : 'var(--wa, #ed6c02)'}">
+      <b>${doneCount} / ${H.length}</b>
+      <span>Headings Reported (${pct}%)</span>
+    </div>
+    <div class="card stat" style="border-top:3px solid var(--ac, #800020)">
+      <b>${E.length}</b>
+      <span>Department Events</span>
+    </div>
+    <div class="card stat" style="border-top:3px solid ${pendingDean + pendingUniv > 0 ? 'var(--wa, #ed6c02)' : 'var(--ln)'}">
+      <b>${pendingDean + pendingUniv}</b>
+      <span>Approvals In Progress</span>
+    </div>
+    <div class="card stat" style="border-top:3px solid var(--ok, #2e7d32)">
+      <b>${approved + completed}</b>
+      <span>Approved / Completed</span>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+      <h3 style="margin:0">Monthly Reporting Progress · ${esc(M)}</h3>
+      <a href="#/monthly"><button class="sm">Open Monthly Reporting →</button></a>
+    </div>
+    <div class="tw">
+      <table>
+        <thead>
+          <tr>
+            <th class="w-1">#</th>
+            <th>Heading</th>
+            <th>Status</th>
+            <th>Records</th>
+            <th class="text-right">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${H.map((hx, idx) => {
+            const s = hs(d.id, hx[0]);
+            const cnt = S.recs.filter(r => r.dept === d.id && r.month === M && r.head === hx[0]).length;
+            const statusBadge = s === "data" ? `<span class="b ok">Data entered (${cnt})</span>` : s === "zero" ? `<span class="b wa">Zero (0)</span>` : `<span class="b er">Not reported</span>`;
+            return `<tr>
+              <td class="w-1" style="color:var(--mu)">${idx + 1}</td>
+              <td><b>${esc(hx[1])}</b></td>
+              <td>${statusBadge}</td>
+              <td>${cnt}</td>
+              <td class="text-right">
+                <a href="#/monthly/${hx[0]}"><button class="${s === "none" ? "sm" : "g sm"}">${s === "none" ? "Enter Data" : "View / Edit"}</button></a>
+              </td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+      <h3 style="margin:0">Recent Department Events &amp; Approvals (${E.length})</h3>
+      <div style="display:flex;gap:8px">
+        <a href="#/events/new"><button class="sm g">+ New Event Approval</button></a>
+        <a href="#/events/new/part"><button class="sm g">+ New Participation Approval</button></a>
+        <a href="#/events"><button class="sm">View All →</button></a>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;font-size:13px;color:var(--mu)">
+      <span class="b">Pending Dean: ${pendingDean}</span>
+      <span class="b">Pending University: ${pendingUniv}</span>
+      <span class="b ok">Approved: ${approved}</span>
+      <span class="b">Organize Submitted: ${submitted}</span>
+      <span class="b ok">Verified &amp; Completed: ${completed}</span>
+    </div>
+    ${E.length ? `<div class="tw"><table><tr><th>Approval ID</th><th>Event Title</th><th>Date</th><th>Mode / Venue</th><th>Status</th><th>Actions</th></tr>
+    ${[...E].reverse().slice(0, 10).map(e => `<tr>
+      <td><a href="#/events/view/${e.id}"><code>${esc(e.num)}</code></a></td>
+      <td><b>${esc(e.title)}</b></td>
+      <td>${e.date}${e.dateTo ? " to " + e.dateTo : ""}</td>
+      <td>${esc(e.mode || "—")} / ${esc(e.venue || "—")}</td>
+      <td>${badge(e.status)}${e.remark && ["RETURNED", "REJECTED", "CRETURNED"].includes(e.status) ? `<br><small>${esc(e.remark)}</small>` : ""}</td>
+      <td style="white-space:nowrap">
+        <a href="#/events/view/${e.id}"><button class="g sm">View</button></a>
+        ${["APPROVED", "CRETURNED"].includes(e.status) ? `<button class="sm" onclick="evOpen('${e.id}','evo')">Organize</button> <button class="sm g" onclick="evOpen('${e.id}','part')">Participation</button>` : e.status === "RETURNED" ? `<a href="#/events/edit/${e.id}"><button class="sm">Correct</button></a>` : ""}
+      </td>
+    </tr>`).join("")}</table></div>` : '<div class="empty">No events or participation approvals created yet.</div>'}
+  </div>
+  `;
+
+  $("#app").innerHTML = h;
+}
+
+
 function dash() {
   if (U.role === "hod") return hodDash();
+  if (U.role === "dept") return deptDash();
   const D = myDepts(), t = tally(D), E = myEv(), n = f => E.filter(f).length; const sub = U.college && S.subs[U.college + "|" + M];
   let h = `<h2>${esc(({ su: "Super Admin Dashboard", ca: "College Dashboard", dean: "Dean / Principal Dashboard", hod: "HOD Dashboard", dept: "Department Dashboard" })[U.role] || (isGlobal() ? "University Dashboard" : `${RN[U.role] || "Custom Role"} Dashboard`))}</h2><p class="s">${isGlobal() ? "Consolidated view of all colleges" : esc(cn(U.college))}. All figures are counted from records entered in this system.</p>${mSel()}<div class="grid" style="margin-top:12px">`;
   const st = [...(isGlobal() ? [["Colleges", S.colleges.length]] : []), ["Departments", D.length], ["Reports with data", t.data], ["Zero submissions", t.zero], ["Not reported", t.none], ["Events", E.length], ["Pending college dean approval", n(e => e.status === "PENDING")], ["Pending university approval", n(e => e.status === "DAPPROVED")], ["Verification pending", n(e => e.status === "SUBMITTED")], ["Completed events", n(e => e.status === "COMPLETED")]].filter(([label]) => workflowOn() || !["Events", "Pending college dean approval", "Pending university approval", "Verification pending", "Completed events"].includes(label));
@@ -1533,7 +1654,12 @@ function getF(F, scope = document, selectedFiles = FS) {
   return o;
 }
 
-const gateList = (hk = "evo") => { const D = myDepts()[0]; const E = D ? S.events.filter(e => e.dept === D.id && ["PENDING", "DAPPROVED", "RETURNED", "APPROVED", "CRETURNED", "SUBMITTED", "COMPLETED"].includes(e.status)) : []; return E.length ? `<div class="tw" style="margin-bottom:14px"><table><tr><th>Approval ID</th><th>Event</th><th>Status</th><th></th></tr>${[...E].reverse().map(e => `<tr><td><code>${esc(e.num)}</code></td><td>${esc(e.title)}</td><td>${badge(e.status)}</td><td>${["APPROVED", "CRETURNED", "SUBMITTED", "COMPLETED"].includes(e.status) ? `<button class="sm" onclick="evOpen('${e.id}','${hk}')">Use this Approval ID</button>` : e.status === "RETURNED" ? `<a href="#/events/edit/${e.id}"><button class="sm g">Correct form</button></a>` : "<small>Awaiting approval</small>"}</td></tr>`).join("")}</table></div>` : "" };
+const gateList = (hk = "evo") => {
+  const D = myDepts()[0];
+  const isPart = hk === "part";
+  const E = D ? S.events.filter(e => e.dept === D.id && (isPart ? (e.isPart || e.partType || (e.num && (e.num.includes('/O/') || e.num.includes('/F/')))) : (!e.isPart && !e.partType && !(e.num && (e.num.includes('/O/') || e.num.includes('/F/'))))) && ["PENDING", "DAPPROVED", "RETURNED", "APPROVED", "CRETURNED", "SUBMITTED", "COMPLETED"].includes(e.status)) : [];
+  return E.length ? `<div class="tw" style="margin-bottom:14px"><table><tr><th>Approval ID</th><th>Event</th><th>Status</th><th></th></tr>${[...E].reverse().map(e => `<tr><td><code>${esc(e.num)}</code></td><td>${esc(e.title)}</td><td>${badge(e.status)}</td><td>${["APPROVED", "CRETURNED", "SUBMITTED", "COMPLETED"].includes(e.status) ? `<button class="sm" onclick="evOpen('${e.id}','${hk}')">Use this Approval ID</button>` : e.status === "RETURNED" ? `<a href="#/events/edit/${e.id}"><button class="sm g">Correct form</button></a>` : "<small>Awaiting approval</small>"}</td></tr>`).join("")}</table></div>` : "";
+};
 const gateHtml = (hk = "evo") => {
   const isPart = hk === "part";
   const title = isPart ? "Participation Details is locked" : "Event Organize is locked";
@@ -1542,8 +1668,8 @@ const gateHtml = (hk = "evo") => {
     : "<b>No approval → no Event Organize.</b> Enter the Approval ID of an approved event. The college, department, faculty and event are taken from the approval automatically.";
   const col = myCols()[0] || {};
   const exCode = (col.code || "SACCP").toUpperCase();
-  const exId = `IQAC/${exCode}/01/${getFinYear()}`;
-  return `<div class="card"><h3>${title}</h3><p class="lg">${desc}</p><ol class="lg" style="margin:0 0 12px 18px"><li>Go to <b>Event reporting → + New event approval</b>, fill the approval form and submit it.</li><li>Once it has both approvals (College Dean &amp; University Admin), copy its <b>Approval ID</b> (e.g. <code>${exId}</code>).</li><li>Come back here, paste that Approval ID below, and ${isPart ? "Participation Details" : "Events Organized"} unlocks.</li></ol><div style="margin:0 0 14px"><a href="#/events/new"><button>Fill Event Approval Form</button></a></div>${gateList(hk)}<div style="max-width:420px"><label>Approval ID</label><input id="g_id" placeholder="e.g. ${exId}"></div><button id="g_go">Verify Approval ID</button><div id="g_out" style="margin-top:10px"></div></div>`;
+  const exId = isPart ? `IQAC/${exCode}/O/01/${getFinYear()}` : `IQAC/${exCode}/01/${getFinYear()}`;
+  return `<div class="card"><h3>${title}</h3><p class="lg">${desc}</p><ol class="lg" style="margin:0 0 12px 18px"><li>Go to <b>Event reporting → + New event approval</b> (or click below), fill the <b>${isPart ? "Participation approval form" : "Event approval form"}</b> and submit it.</li><li>Once it has both approvals (College Dean &amp; University Admin), copy its <b>Approval ID</b> (e.g. <code>${exId}</code>).</li><li>Come back here, paste that Approval ID below, and ${isPart ? "Participation Details" : "Events Organized"} unlocks.</li></ol><div style="margin:0 0 14px"><a href="${isPart ? "#/events/new/part" : "#/events/new"}"><button>${isPart ? "Fill Participation Approval Form" : "Fill Event Approval Form"}</button></a></div>${gateList(hk)}<div style="max-width:420px"><label>Approval ID</label><input id="g_id" placeholder="e.g. ${exId}"></div><button id="g_go">Verify Approval ID</button><div id="g_out" style="margin-top:10px"></div></div>`;
 };
 const evBanner = e => `<div class="note"><b>Approval ID verified:</b> <code>${esc(e.num)}</code> ${badge(e.status)}<br>College: ${esc(cn((S.depts.find(d => d.id === e.dept) || {}).college))} · Department: ${esc(dn(e.dept))} · Faculty: ${esc(e.faculty || "—")}${e.conv ? " · Convener: " + esc(e.conv) : ""}<br>Event: ${esc(e.title)} · Approved dates: ${e.date}${e.dateTo ? " to " + e.dateTo : ""}<br>Fields marked "from approval" are locked. Reporting ${cyclePeriod()}: ${dateToM(e.date)}.${e.status === "CRETURNED" && e.remark ? `<br><b>Returned:</b> ${esc(e.remark)}` : ""}<br><button class="g sm" id="g_x">Use a different Approval ID</button></div>`;
 function monthly(hk, rid) {
@@ -1763,6 +1889,7 @@ function events(a, id) {
   if (a === "new" || a === "edit") {
     if (!D) { $("#app").innerHTML = '<h2>Event approval form</h2><div class="note">No department is assigned to this account. Ask your administrator to assign a department before creating an approval.</div>'; return }
     const e = a === "edit" && S.events.find(x => x.id === id), g = k => esc(e && e[k] || ""), sp = e && e.speakers || [], TY = ["Seminar", "Conference", "Workshop", "Training", "Short Term Course", "FDP", "Special Lecture", "Sports", "Cultural", "Co-curricular", "Extra Curricular", "Other"], oth = e && !TY.includes(e.type);
+    const isPart = (a === "new" && (id === "part" || (location.hash && location.hash.includes("/part")))) || (e && (e.isPart || e.partType || (e.num && (e.num.includes('/O/') || e.num.includes('/F/')))));
     let myCfs = S.eventConfs.filter(x => x.college === D.college);
     const colObj = S.colleges.find(c => c.id === D.college) || {};
     const collegeCode = (colObj.code || (D.code ? D.code : "SACCP")).toUpperCase();
@@ -1771,26 +1898,25 @@ function events(a, id) {
       save();
       myCfs = S.eventConfs.filter(x => x.college === D.college);
     }
-    // Dynamic sequential IQAC numbering: IQAC/<COLLEGE_CODE>/<SEQ>/<FIN_YEAR> e.g. IQAC/SACCP/01/2026-27
-    const getExpectedNum = (confId) => {
+    // Dynamic sequential IQAC numbering:
+    // Event Organize: IQAC/<COLLEGE>/<SEQ>/<FY>
+    // Participation Details: IQAC/<COLLEGE>/O/<SEQ>/<FY> (Organizer) or IQAC/<COLLEGE>/F/<SEQ>/<FY> (Faculty)
+    const getExpectedNum = (confId, partCode) => {
       const conf = (confId && myCfs.find(x => x.id === confId)) || myCfs[0] || {};
       const p1 = (conf.p1 || "IQAC").trim();
       const p2 = collegeCode;
       const fy = getFinYear();
-      const pre = `${p1}/${p2}/`;
+      const typePart = partCode ? `${partCode}/` : "";
+      const pre = `${p1}/${p2}/${typePart}`;
       const suf = `/${fy}`;
       const used = (S.events || [])
         .filter(x => typeof x.num === "string")
         .map(x => {
           const s = x.num.trim();
           if (s.startsWith(pre) && s.endsWith(suf)) {
-            const middle = s.slice(pre.length, s.length - suf.length).replace(/^[^\d]+/, "");
-            const n = parseInt(middle, 10);
-            return isNaN(n) ? null : n;
-          }
-          const m = s.match(new RegExp(`^${p1}\\/${p2}\\/([0-9]+)\\/`, "i"));
-          if (m) {
-            const n = parseInt(m[1], 10);
+            const middle = s.slice(pre.length, s.length - suf.length);
+            if (!partCode && middle.includes('/')) return null; // do not collide with O/ or F/
+            const n = parseInt(middle.replace(/^[^\d]+/, ""), 10);
             return isNaN(n) ? null : n;
           }
           return null;
@@ -1799,17 +1925,42 @@ function events(a, id) {
       const next = (used.length ? Math.max(...used) : 0) + 1;
       return `${pre}${String(next).padStart(2, "0")}${suf}`;
     };
-    const expectedNum = e ? e.num : getExpectedNum(myCfs[0].id);
+    const initialPartCode = isPart ? (e?.partType === "F" ? "F" : "O") : null;
+    const expectedNum = e ? e.num : getExpectedNum(myCfs[0].id, initialPartCode);
     $("#app").innerHTML = `<p class="noprint"><a href="#/events">← Event Reporting</a></p>${e && e.remark ? `<div class="note">Remark: ${esc(e.remark)}</div>` : ""}
+${!e ? `
+<div class="card noprint" style="margin-bottom:16px;padding:12px 16px;background:var(--ac2);border:1px solid var(--ln);border-radius:8px">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+    <div>
+      <label for="a_form_type" style="font-weight:700;font-size:14px;color:var(--tx);margin:0 10px 0 0">Approval Form Type:</label>
+      <select id="a_form_type" style="font-weight:600;padding:6px 12px;border:1px solid var(--ln);border-radius:6px;background:var(--bg);cursor:pointer">
+        <option value="evo" ${!isPart ? "selected" : ""}>EVENT APPROVAL FORM (Event Organization)</option>
+        <option value="part" ${isPart ? "selected" : ""}>PARTICIPATION APPROVAL FORM (Participation Details)</option>
+      </select>
+    </div>
+    <span class="s" style="font-size:12px">${isPart ? "Approval ID format: IQAC/&lt;COLLEGE&gt;/[O|F]/&lt;SEQ&gt;/&lt;FY&gt;" : "Approval ID format: IQAC/&lt;COLLEGE&gt;/&lt;SEQ&gt;/&lt;FY&gt;"}</span>
+  </div>
+</div>
+` : ""}
 ${!e && myCfs.length > 1 ? `<div class="approval-format noprint"><label for="a_conf_sel">Event ID format <span class="rq">*</span></label><select id="a_conf_sel">${myCfs.map(c => `<option value="${esc(c.id)}">${esc(c.p1)}/${esc(c.p2)}/.../${esc(getFinYear())}</option>`).join("")}</select></div>` : ""}
-${approvalPaper(e || {}, { editable: true, isNew: !e, department: D.name, reference: expectedNum, types: TY, other: oth })}
+${approvalPaper(e || {}, { editable: true, isNew: !e, isPart, partRole: e?.partType === "F" ? "Faculty" : "Organizer", department: D.name, reference: expectedNum, types: TY, other: oth })}
 <div class="approval-actions noprint"><button id="a_g">${e ? "Resubmit for approval" : "Submit for approval"}</button><a href="#/events">Cancel</a></div>`;
     $("#a_y").onchange = () => $("#a_ow").hidden = $("#a_y").value !== "Other";
-    if ($("#a_conf_sel")) $("#a_conf_sel").onchange = () => {
-      const n = getExpectedNum($("#a_conf_sel").value);
+    if ($("#a_form_type")) {
+      $("#a_form_type").onchange = ev => {
+        location.hash = ev.target.value === "part" ? "#/events/new/part" : "#/events/new";
+      };
+    }
+    const syncPartRef = () => {
+      const checked = document.querySelector("input[name=a_part_role]:checked");
+      const pCode = isPart ? ((checked && checked.value === "Faculty") ? "F" : "O") : null;
+      const confId = $("#a_conf_sel") ? $("#a_conf_sel").value : myCfs[0].id;
+      const nextNum = getExpectedNum(confId, pCode);
       const el = $("#e_ref");
-      if (el) { if (el.tagName === "INPUT") el.value = n; else el.innerText = n; }
+      if (el) { if (el.tagName === "INPUT") el.value = nextNum; else el.innerText = nextNum; }
     };
+    document.querySelectorAll("input[name=a_part_role]").forEach(r => r.onchange = syncPartRef);
+    if ($("#a_conf_sel")) $("#a_conf_sel").onchange = syncPartRef;
     const dy = () => { const f = $("#a_fr").value, t = $("#a_to").value; if (f && t && t >= f) $("#a_dy").value = Math.round((new Date(t) - new Date(f)) / 864e5) + 1 }; $("#a_fr").onchange = $("#a_to").onchange = dy;
     $("#a_g").onclick = () => {
       const v = k => $("#" + k).value.trim(), ty = $("#a_y").value === "Other" ? v("a_ot") : $("#a_y").value, mo = (document.querySelector("input[name=a_m]:checked") || {}).value;
@@ -1820,14 +1971,24 @@ ${approvalPaper(e || {}, { editable: true, isNew: !e, department: D.name, refere
       if (v("a_dy") && (isNaN(+v("a_dy")) || +v("a_dy") < 1)) return alert("The duration must be at least 1 day.");
       $("#a_g").disabled = true;
       const o = { type: ty, faculty: v("a_f"), assoc: v("a_as"), conv: v("a_c"), coconv: v("a_cc"), secy: v("a_sc"), speakers: [v("a_s1"), v("a_s2")], title: v("a_t"), mode: mo, date: v("a_fr"), dateTo: v("a_to"), days: v("a_dy"), venue: v("a_v"), costFig: v("a_cf"), costWords: v("a_cw"), status: "PENDING" };
-      if (e) { Object.assign(e, o); e.hist.push([new Date().toISOString(), "Resubmitted"]) }
+      if (e) {
+        const checked = document.querySelector("input[name=a_part_role]:checked");
+        const pCode = isPart ? ((checked && checked.value === "Faculty") ? "F" : "O") : null;
+        Object.assign(e, o, { isPart: Boolean(isPart), partType: pCode, category: isPart ? "part" : "evo" });
+        e.hist.push([new Date().toISOString(), "Resubmitted"]);
+      }
       else {
         const confId = $("#a_conf_sel") ? $("#a_conf_sel").value : myCfs[0].id;
         const conf = myCfs.find(x => x.id === confId) || myCfs[0];
+        const isUnivAdmin = isSU() || (isGlobal() && U && !['ca', 'dean', 'hod', 'dept'].includes(U.role));
+        const checked = document.querySelector("input[name=a_part_role]:checked");
+        const pCode = isPart ? ((checked && checked.value === "Faculty") ? "F" : "O") : null;
+        const calcNum = getExpectedNum(confId, pCode);
         const refInp = $("#e_ref") ? ($("#e_ref").tagName === "INPUT" ? $("#e_ref").value.trim() : $("#e_ref").innerText.trim()) : "";
-        const num = refInp || getExpectedNum(confId);
+        // Only University Admin can customize the reference. Others always receive the system-calculated sequence:
+        const num = isUnivAdmin && refInp ? refInp : calcNum;
 
-        S.events.push({ id: uid(), num, dept: D.id, ...o, by: U.name, byEmail: U.email || "", submittedAt: new Date().toISOString(), hist: [[new Date().toISOString(), "Submitted for approval"]] })
+        S.events.push({ id: uid(), num, dept: D.id, isPart: Boolean(isPart), partType: pCode, category: isPart ? "part" : "evo", ...o, by: U.name, byEmail: U.email || "", submittedAt: new Date().toISOString(), hist: [[new Date().toISOString(), "Submitted for approval"]] })
       }
       save(); location.hash = "#/events"; route()
     }; return
@@ -1866,6 +2027,9 @@ function analytics() {
 }
 function approvalPaper(e, options = {}) {
   const edit = options.editable === true, sp = e.speakers || [], other = options.other;
+  const isPart = Boolean(options.isPart || e.isPart || e.partType || (e.num && (e.num.includes('/O/') || e.num.includes('/F/'))));
+  const formTitle = isPart ? "PARTICIPATION APPROVAL FORM" : "EVENT APPROVAL FORM";
+  const isUnivAdmin = isSU() || (isGlobal() && U && !['ca', 'dean', 'hod', 'dept'].includes(U.role));
   const value = v => esc(v ?? "").replace(/\n/g, "<br>") || "—";
   const input = (id, label, v, type = "text", extra = "") => edit ? `<input id="${id}" aria-label="${esc(label)}" type="${type}" value="${esc(v ?? "")}" ${extra}>` : `<span class="approval-value">${value(v)}</span>`;
   const row = (label, contents, required = false) => `<tr><th scope="row">${label}${edit && required ? ' <span class="rq">*</span>' : ""}</th><td>${contents}</td></tr>`;
@@ -1874,11 +2038,32 @@ function approvalPaper(e, options = {}) {
   const date = e.submittedAt || e.hist?.[0]?.[0], formDate = date ? new Date(date).toLocaleDateString("en-GB") : new Date().toLocaleDateString("en-GB");
   const type = edit ? `<select id="a_y" aria-label="Proposed event"><option value="">Select proposed event</option>${(options.types || []).map(t => `<option ${other ? t === "Other" ? "selected" : "" : e.type === t ? "selected" : ""}>${esc(t)}</option>`).join("")}</select><div id="a_ow" ${other ? "" : "hidden"}><label for="a_ot">Other event <span class="rq">*</span></label><input id="a_ot" value="${other ? esc(e.type) : ""}"></div>` : value(e.type);
   const modes = `<div class="approval-modes">${MD.map(m => `<label><input type="radio" name="a_m" value="${m}" ${e.mode === m ? "checked" : ""} ${edit ? "" : "disabled"}>${m}</label>`).join("")}</div>`;
+
+  const partSelector = edit ? `
+    <div class="approval-modes" id="a_part_role_wrap">
+      <label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-weight:600;margin-right:16px">
+        <input type="radio" name="a_part_role" value="Organizer" ${(e.partType === "O" || !e.partType || options.partRole !== "Faculty") ? "checked" : ""}>
+        Organizer
+      </label>
+      <label style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-weight:600">
+        <input type="radio" name="a_part_role" value="Faculty" ${(e.partType === "F" || options.partRole === "Faculty") ? "checked" : ""}>
+        Faculty
+      </label>
+    </div>
+  ` : `<span class="approval-value"><b>${e.partType === "F" ? "Faculty" : "Organizer"}</b></span>`;
+
+  const refInput = isUnivAdmin ? `
+    <input id="e_ref" value="${esc(options.reference || e.num || "")}" style="font-weight:700;font-family:monospace;font-size:14px;padding:3px 8px;border:1px solid var(--ln);border-radius:4px;display:inline-block;width:260px;max-width:100%" placeholder="e.g. IQAC/SACCP/01/2026-27">
+  ` : `
+    <input id="e_ref" value="${esc(options.reference || e.num || "")}" readonly tabindex="-1" style="font-weight:700;font-family:monospace;font-size:14px;padding:3px 8px;border:1px solid var(--ln);border-radius:4px;display:inline-block;width:260px;max-width:100%;background:var(--bg,#f8fafc);color:var(--tx);cursor:not-allowed;" title="Reference ID is auto-generated and locked. Only University Admin has permission to modify." placeholder="e.g. IQAC/SACCP/01/2026-27">
+  `;
+
   return `<section class="approval-paper${edit ? " approval-edit" : ""}" aria-label="University event approval form">
 <header class="approval-letterhead"><div>ADICHUNCHANAGIRI<br>UNIVERSITY</div><span>Accredited with NAAC Grade A+</span></header>
-<div class="approval-meta"><strong>Form ref: ${edit ? `<input id="e_ref" value="${esc(options.reference || e.num || "")}" style="font-weight:700;font-family:monospace;font-size:14px;padding:3px 8px;border:1px solid var(--ln);border-radius:4px;display:inline-block;width:240px;max-width:100%" placeholder="e.g. IQAC/SACCP/01/2026-27">` : `<span id="approval-ref"><code>${esc(options.reference || e.num || "—")}</code></span>`}</strong><span>Date: ${esc(formDate)}</span></div>
-<h2>EVENT APPROVAL FORM</h2><p class="approval-college">${esc(cn((S.depts.find(d => d.id === e.dept) || {}).college || myDepts()[0]?.college))}</p>
+<div class="approval-meta"><strong>Form ref: ${edit ? refInput : `<span id="approval-ref"><code>${esc(options.reference || e.num || "—")}</code></span>`}</strong><span>Date: ${esc(formDate)}</span></div>
+<h2>${formTitle}</h2><p class="approval-college">${esc(cn((S.depts.find(d => d.id === e.dept) || {}).college || myDepts()[0]?.college))}</p>
 <table class="approval-table"><tbody>
+${isPart ? row("Participation As", partSelector, true) : ""}
 ${row("Proposed Event", type, true)}
 ${row("Faculty", input("a_f", "Faculty", e.faculty), true)}
 ${row("Department", input("a_department", "Department", options.department || dn(e.dept), "text", "disabled"))}
