@@ -2173,8 +2173,6 @@ ${row('Duration <small>(in days)</small>', `<div class="approval-schedule"><div 
 ${row('Proposed Cost for the Event (Rs.) <small>(if any)</small>', `<div class="approval-cost">${field("In figures", input("a_cf", "Proposed cost in figures", e.costFig, "number", 'min="0"'))}${field("In words", input("a_cw", "Proposed cost in words", e.costWords))}</div>`)}
 ${e.desc && !edit ? row("Description", value(e.desc)) : ""}
 </tbody></table>
-<div style="display:flex;justify-content:flex-end;margin-top:24px;padding-right:12px"><div style="text-align:center"><div style="font-weight:700;font-size:14px;color:var(--tx)">Director IQAC</div></div></div>
-<div style="text-align:center;margin-top:24px;font-size:12px;color:var(--mu,#666);border-top:1px solid var(--ln);padding-top:8px">B G Nagara - 571448, NH-75, Nagamangala Taluk, Mandya District, Karnataka, India.</div>
 </section>`;
 }
 function apForm(e) { return approvalPaper(e) }
