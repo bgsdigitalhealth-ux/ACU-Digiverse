@@ -102,42 +102,185 @@ if (!S.headings) S.headings = defaultH;
 else S.headings.forEach(h => { if (h[0] === "part") h[1] = "Academic Participation"; if (h[0] === "npt" && h[1] === "NPTEL (Students & Staff)") h[1] = "NPTEL (Staff)"; const rn = STAFF_RENAMES[h[0]] || {}; h[2] = h[2].map(f => { f = f.replace(/ Link\|l/g, "|fu").replace(/Link\|l/g, "|fu"); const [l, ...rest] = f.split("|"); return rn[l] ? [rn[l], ...rest].join("|") : f }) });
 (S.recs || []).forEach(r => { const rn = STAFF_RENAMES[r.head]; if (rn && r.data) for (const [o, n] of Object.entries(rn)) if (o in r.data) { if (!(n in r.data)) r.data[n] = r.data[o]; delete r.data[o] } });
 let H = S.headings;
-const ST = { PENDING: ["Pending Dean/Principal Approval", "wa"], DAPPROVED: ["Dean/Principal Approved · Pending University Approval", "wa"], RETURNED: ["Returned for Correction", "er"], REJECTED: ["Rejected", "er"], APPROVED: ["Finally Approved", "ok"], SUBMITTED: ["Verification pending", "wa"], CRETURNED: ["Event Organize returned", "er"], COMPLETED: ["Completed", "ok"] };
+const isPartEvent = e => !!e && (e.isPart === true || e.category === "part" || e.formType === "part" || (typeof e.num === "string" && (e.num.includes("/O/") || e.num.includes("/F/"))));
+const isIQAC = () => !!U && U.role === "iqac";
+const isDeanResearch = () => !!U && U.role === "dean_research";
+const isDocOfficer = () => !!U && U.role === "doc_officer";
+
+const ST = {
+  PENDING: ["Pending Department HOD Review", "wa"],
+  HOD_APPROVED: ["HOD Approved · Pending Dean/Principal Review", "wa"],
+  DAPPROVED: ["Dean Approved · Pending University Authorisation", "wa"],
+  RETURNED: ["Returned for Correction", "er"],
+  REJECTED: ["Rejected", "er"],
+  APPROVED: ["Finally Authorised & Approved", "ok"],
+  SUBMITTED: ["Completion Report Submitted · Verification Pending", "wa"],
+  CRETURNED: ["Completion Report Returned for Evidence", "er"],
+  COMPLETED: ["Completed & Documented", "ok"]
+};
+
 if (!S.notifications) S.notifications = [];
-// Two-level approval order: the college Dean decides first; only a University Admin may give the final approval.
+
 const eCollege = e => (S.depts.find(d => d.id === (e && e.dept)) || {}).college || (e && e.college) || null;
-const approvalStage = s => s === "PENDING" ? "dean" : s === "DAPPROVED" ? "university" : null;
+const approvalStage = s => s === "PENDING" ? "hod" : s === "HOD_APPROVED" ? "dean" : s === "DAPPROVED" ? "university" : null;
 const isDeanOf = e => !!U && U.role === "dean" && !!eCollege(e) && U.college === eCollege(e);
 const isHodOf = e => !!U && U.role === "hod" && (e && e.dept === U.dept);
+
 const canDecide = (e, d) => {
   const st = approvalStage(e && e.status);
   if (!st) return false;
-  if (d === "APPROVED") {
-    if (st !== "university") return false;
-    if (isSU()) return true;
-    if (isDeanResearch()) return isPartEvent(e);
-    if (isIQAC()) return !isPartEvent(e);
-    return isGlobal();
-  }
-  const deanStage = st === "dean";
-  if (d === "DAPPROVED") return deanStage && (isDeanOf(e) || isHodOf(e) || isSU());
-  if (d === "RETURNED" || d === "REJECTED") {
-    if (deanStage) return isDeanOf(e) || isHodOf(e) || isSU();
-    if (st === "university") {
-      if (isSU()) return true;
-      if (isDeanResearch()) return isPartEvent(e);
-      if (isIQAC()) return !isPartEvent(e);
-      return isGlobal();
-    }
+  const isPart = isPartEvent(e);
+
+  // Stage 1: Department HOD Review (PENDING -> HOD_APPROVED)
+  if (st === "hod") {
+    const isHod = isHodOf(e) || isSU();
+    if (!isHod) return false;
+    if (d === "HOD_APPROVED" || d === "DAPPROVED") return true;
+    if (d === "RETURNED" || d === "REJECTED") return true;
     return false;
   }
+
+  // Stage 2: College Dean / Principal Review (HOD_APPROVED -> DAPPROVED)
+  if (st === "dean") {
+    const isDean = isDeanOf(e) || isSU();
+    if (!isDean) return false;
+    if (d === "DAPPROVED") return true;
+    if (d === "RETURNED" || d === "REJECTED") return true;
+    return false;
+  }
+
+  // Stage 3: University Authorisation (DAPPROVED -> APPROVED)
+  if (st === "university") {
+    const canAuthorize = isSU() || (isPart ? isDeanResearch() : isIQAC()) || (isGlobal() && !['ca', 'dean', 'hod', 'dept', 'iqac', 'dean_research', 'doc_officer'].includes(U.role));
+    if (!canAuthorize) return false;
+    if (d === "APPROVED") return true;
+    if (d === "RETURNED" || d === "REJECTED") return true;
+    return false;
+  }
+
   return false;
 };
+
 const canVerify = e => !!e && e.status === "SUBMITTED" && (
-  isGlobal() || isDocOfficer() || isIQAC() || (!!eCollege(e) && !!U && U.college === eCollege(e) && (!U.dept || isHodOf(e)) && U.role !== "dept")
+  isDocOfficer() || isIQAC() || (isPartEvent(e) && isDeanResearch()) || isSU() || isGlobal() || (!!eCollege(e) && !!U && U.college === eCollege(e) && (!U.dept || isHodOf(e)) && U.role !== "dept")
 );
-const unreadNotices = () => (S.notifications || []).filter(n => !(n.read_by || []).includes(window.__ACU.uid)).length;
+
+function sendNotice({ event, status, title, message }) {
+  if (!S.notifications) S.notifications = [];
+  const isPart = isPartEvent(event);
+  const col = eCollege(event);
+  const n = {
+    id: uid(),
+    event_id: event.id,
+    event_num: event.num,
+    event_title: event.title,
+    event_type: isPart ? "Academic Participation" : "Event Organization",
+    status,
+    title: title || (ST[status] ? ST[status][0] : status),
+    message: message || `Status updated to ${ST[status] ? ST[status][0] : status}`,
+    by: U ? U.name : "System",
+    created_at: new Date().toISOString(),
+    read_by: [],
+    college: col,
+    dept: event.dept,
+    isPart
+  };
+  S.notifications.unshift(n);
+  if (S.notifications.length > 500) S.notifications.length = 500;
+  return n;
+}
+
+function isNoticeForMe(n) {
+  if (!U) return false;
+  if (isSU()) return true;
+  if (isIQAC()) return !n.isPart || !n.college;
+  if (isDeanResearch()) return n.isPart || !n.college;
+  if (isDocOfficer()) return true;
+  if (isGlobal()) return true;
+  if (U.role === "ca" || U.role === "dean") return !n.college || n.college === U.college;
+  if (U.role === "hod") return (!n.college || n.college === U.college) && (!n.dept || n.dept === U.dept);
+  if (U.role === "dept") return (!n.college || n.college === U.college) && (!n.dept || n.dept === U.dept);
+  return true;
+}
+
+const unreadNotices = () => (S.notifications || []).filter(n => isNoticeForMe(n) && !(n.read_by || []).includes(window.__ACU.uid)).length;
 const notifBell = () => { const c = unreadNotices(); return `<a class="acu-bell${c ? " has" : ""}" href="#/notifications" title="Approval notices"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${c ? `<span>${c}</span>` : ""}</a>` };
+function workflowStepper(e) {
+  if (!e) return "";
+  const isPart = isPartEvent(e);
+  const st = e.status || "PENDING";
+  
+  const s1Done = true;
+  const s2Done = ["HOD_APPROVED", "DAPPROVED", "APPROVED", "SUBMITTED", "COMPLETED"].includes(st);
+  const s2Active = st === "PENDING";
+  const s2Ret = st === "RETURNED" && (e.approvals?.slice(-1)[0]?.stage === "hod" || (e.hist || []).slice(-1)[0]?.[1]?.includes("HOD"));
+
+  const s3Done = ["DAPPROVED", "APPROVED", "SUBMITTED", "COMPLETED"].includes(st);
+  const s3Active = st === "HOD_APPROVED";
+  const s3Ret = st === "RETURNED" && (e.approvals?.slice(-1)[0]?.stage === "dean" || (e.hist || []).slice(-1)[0]?.[1]?.includes("Dean"));
+
+  const s4Done = ["APPROVED", "SUBMITTED", "COMPLETED"].includes(st);
+  const s4Active = st === "DAPPROVED";
+  const s4Ret = st === "RETURNED" && !s2Ret && !s3Ret;
+
+  const s5Done = ["SUBMITTED", "COMPLETED"].includes(st);
+  const s5Active = st === "APPROVED";
+
+  const s6Done = ["SUBMITTED", "COMPLETED"].includes(st);
+  const s6Active = st === "APPROVED";
+
+  const s7Done = st === "COMPLETED";
+  const s7Active = st === "SUBMITTED";
+  const s7Ret = st === "CRETURNED";
+
+  const getStepClass = (done, active, ret) => ret ? "returned" : done ? "completed" : active ? "active" : "upcoming";
+  const getIcon = (done, active, ret) => ret ? "⚠️" : done ? "✓" : active ? "⏳" : "○";
+
+  const steps = isPart ? [
+    { num: 1, title: "Staff / Faculty", subtitle: "Submission", done: s1Done, active: false, ret: false },
+    { num: 2, title: "Department HOD", subtitle: "Review", done: s2Done, active: s2Active, ret: s2Ret },
+    { num: 3, title: "Dean / Principal", subtitle: "Review", done: s3Done, active: s3Active, ret: s3Ret },
+    { num: 4, title: "Dean Research, ACU", subtitle: "Review & Authorisation", done: s4Done, active: s4Active, ret: s4Ret },
+    { num: 5, title: "Academic Participation", subtitle: "Attending / Presenting", done: s5Done, active: s5Active, ret: false },
+    { num: 6, title: "Report Submission", subtitle: "Within 24 Hours", done: s6Done, active: s6Active, ret: false },
+    { num: 7, title: "Final Review & Documentation", subtitle: "Evidence Verification", done: s7Done, active: s7Active, ret: s7Ret }
+  ] : [
+    { num: 1, title: "Staff / Faculty", subtitle: "Submission", done: s1Done, active: false, ret: false },
+    { num: 2, title: "Department HOD", subtitle: "Review", done: s2Done, active: s2Active, ret: s2Ret },
+    { num: 3, title: "Dean / Principal", subtitle: "Review", done: s3Done, active: s3Active, ret: s3Ret },
+    { num: 4, title: "Central IQAC", subtitle: "Review & Authorisation", done: s4Done, active: s4Active, ret: s4Ret },
+    { num: 5, title: "Event Conducted", subtitle: "Organized Activity", done: s5Done, active: s5Active, ret: false },
+    { num: 6, title: "Report Submission", subtitle: "Within 24 Hours", done: s6Done, active: s6Active, ret: false },
+    { num: 7, title: "Final Review & Documentation", subtitle: "Evidence Verification", done: s7Done, active: s7Active, ret: s7Ret }
+  ];
+
+  return `
+<div class="card" style="padding:16px 20px;margin-bottom:20px;background:#fff;border:1px solid var(--ln);border-radius:12px;box-shadow:var(--shadow-subtle)">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px;border-bottom:1px solid var(--ln);padding-bottom:10px">
+    <div>
+      <span style="font-family:'Cinzel',serif;font-weight:700;font-size:14.5px;color:var(--ac);text-transform:uppercase;letter-spacing:0.04em">
+        ${isPart ? "🎓 Academic Participation Workflow" : "📅 Event Organisation Workflow"}
+      </span>
+      <span style="display:inline-block;margin-left:10px">${badge(e.status, e)}</span>
+    </div>
+    <div style="font-size:12.5px;color:var(--mu)">
+      Current Stage: <b style="color:var(--tx)">${ST[e.status] ? ST[e.status][0] : e.status}</b>
+    </div>
+  </div>
+  <div class="workflow-stepper">
+    ${steps.map((s, idx) => `
+      <div class="workflow-step ${getStepClass(s.done, s.active, s.ret)}">
+        <div style="font-size:9.5px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;opacity:0.85">Step ${s.num}</div>
+        <div style="font-size:14px;line-height:1">${getIcon(s.done, s.active, s.ret)}</div>
+        <b style="font-size:11.5px;line-height:1.2;margin-top:2px">${esc(s.title)}</b>
+        <span style="font-size:10.5px;opacity:0.85">${esc(s.subtitle)}</span>
+      </div>
+      ${idx < steps.length - 1 ? '<div class="workflow-arrow">→</div>' : ""}
+    `).join("")}
+  </div>
+</div>`;
+}
+
 if (!S.RN) S.RN = {
   su: "University Admin",
   ca: "College Admin",
@@ -154,10 +297,6 @@ if (!S.RN.dean_research) S.RN.dean_research = "Dean Research, ACU";
 if (!S.RN.doc_officer) S.RN.doc_officer = "Institutional Reporting / Documentation Officer";
 const RN = S.RN;
 
-const isPartEvent = e => !!e && (e.isPart === true || e.category === "part" || e.formType === "part" || (typeof e.num === "string" && (e.num.includes("/O/") || e.num.includes("/F/"))));
-const isIQAC = () => U && U.role === "iqac";
-const isDeanResearch = () => U && U.role === "dean_research";
-const isDocOfficer = () => U && U.role === "doc_officer";
 const cn = id => (S.colleges.find(c => c.id === id) || {}).name || "—", dn = id => (S.depts.find(d => d.id === id) || {}).name || "—";
 const isGlobal = () => isSU() || (U && !['NONE', 'dept', 'hod', 'ca', 'dean'].includes(U.role) && !U.college && !U.dept);
 const myDepts = () => !U ? [] : isGlobal() ? S.depts : U.dept ? S.depts.filter(d => d.id === U.dept) : S.depts.filter(d => d.college === U.college);
@@ -165,7 +304,7 @@ const myCols = () => !U ? [] : isGlobal() ? S.colleges : S.colleges.filter(c => 
 const workflowOn = () => S.eventWorkflowEnabled === true;
 const workflowUnavailable = () => { $("#app").innerHTML = '<h2>Feature unavailable</h2><p class="s">This feature is currently turned off.</p>'; };
 const myEv = () => { if (!workflowOn()) return []; const ids = myDepts().map(d => d.id); return S.events.filter(e => ids.includes(e.dept)) };
-const badge = s => `<span class="b ${ST[s][1]}">${ST[s][0]}</span>`;
+const badge = (s, e) => { if (s === "DAPPROVED" && e) { return `<span class="b wa">${isPartEvent(e) ? "Dean Approved · Pending Dean Research Authorisation" : "Dean Approved · Pending Central IQAC Authorisation"}</span>`; } const item = ST[s] || [s, "wa"]; return `<span class="b ${item[1]}">${item[0]}</span>`; };
 const hs = (d, h) => S.recs.some(x => x.dept === d && x.month === M && x.head === h) ? "data" : S.zeros.some(x => x.dept === d && x.month === M && x.head === h) ? "zero" : "none";
 const tally = D => { let t = { data: 0, zero: 0, none: 0 }; D.forEach(d => H.forEach(h => t[hs(d.id, h[0])]++)); return t };
 const bar = t => { const n = t.data + t.zero + t.none || 1, w = k => t[k] / n * 100; return `<div class="bar" title="Data ${t.data} · Zero ${t.zero} · Not reported ${t.none}"><i style="width:${w("data")}%;background:var(--ok)"></i><i style="width:${w("zero")}%;background:var(--gold)"></i><i style="width:${w("none")}%;background:var(--er)"></i></div>` };
@@ -431,7 +570,8 @@ function hodDash() {
   const doneCount = H.filter(h => hs(d.id, h[0]) !== "none").length;
   const pct = Math.round((doneCount / H.length) * 100);
 
-  const pendingDean = n(e => e.status === "PENDING");
+  const pendingHOD = n(e => e.status === "PENDING");
+  const pendingDean = n(e => e.status === "HOD_APPROVED");
   const pendingUniv = n(e => e.status === "DAPPROVED");
   const approved = n(e => ["APPROVED", "CRETURNED"].includes(e.status));
   const submitted = n(e => e.status === "SUBMITTED");
@@ -523,6 +663,7 @@ function hodDash() {
     </div>
     <p class="s" style="margin-top:0">Track approval progress, organize reports, and verification for your department.</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:13px">
+      <span class="b wa">Pending HOD: ${pendingHOD}</span>
       <span class="b wa">Pending Dean: ${pendingDean}</span>
       <span class="b wa">Pending University: ${pendingUniv}</span>
       <span class="b ok">Approved: ${approved}</span>
@@ -592,7 +733,8 @@ function deptDash() {
   const E = myEv(), n = f => E.filter(f).length;
   const doneCount = H.filter(h => hs(d.id, h[0]) !== "none").length;
   const pct = Math.round((doneCount / H.length) * 100);
-  const pendingDean = n(e => e.status === "PENDING");
+  const pendingHOD = n(e => e.status === "PENDING");
+  const pendingDean = n(e => e.status === "HOD_APPROVED");
   const pendingUniv = n(e => e.status === "DAPPROVED");
   const approved = n(e => e.status === "APPROVED");
   const submitted = n(e => e.status === "SUBMITTED");
@@ -622,8 +764,8 @@ function deptDash() {
       <b>${E.length}</b>
       <span>Department Events</span>
     </div>
-    <div class="card stat" style="border-top:3px solid ${pendingDean + pendingUniv > 0 ? 'var(--wa, #ed6c02)' : 'var(--ln)'}">
-      <b>${pendingDean + pendingUniv}</b>
+    <div class="card stat" style="border-top:3px solid ${pendingHOD + pendingDean + pendingUniv > 0 ? 'var(--wa, #ed6c02)' : 'var(--ln)'}">
+      <b>${pendingHOD + pendingDean + pendingUniv}</b>
       <span>Approvals In Progress</span>
     </div>
     <div class="card stat" style="border-top:3px solid var(--ok, #2e7d32)">
@@ -678,8 +820,9 @@ function deptDash() {
       </div>
     </div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;font-size:13px;color:var(--mu)">
-      <span class="b">Pending Dean: ${pendingDean}</span>
-      <span class="b">Pending University: ${pendingUniv}</span>
+      <span class="b wa">Pending HOD: ${pendingHOD}</span>
+      <span class="b wa">Pending Dean: ${pendingDean}</span>
+      <span class="b wa">Pending University: ${pendingUniv}</span>
       <span class="b ok">Approved: ${approved}</span>
       <span class="b">Organize Submitted: ${submitted}</span>
       <span class="b ok">Verified &amp; Completed: ${completed}</span>
@@ -1284,11 +1427,14 @@ function docOfficerDash() {
 }
 
 function dash() {
+  if (U.role === "iqac") return iqacDash();
+  if (U.role === "dean_research") return deanResearchDash();
+  if (U.role === "doc_officer") return docOfficerDash();
   if (U.role === "hod") return hodDash();
   if (U.role === "dept") return deptDash();
   const D = myDepts(), t = tally(D), E = myEv(), n = f => E.filter(f).length; const sub = U.college && S.subs[U.college + "|" + M];
   let h = `<h2>${esc(({ su: "Super Admin Dashboard", ca: "College Dashboard", dean: "Dean / Principal Dashboard", hod: "HOD Dashboard", dept: "Department Dashboard" })[U.role] || (isGlobal() ? "University Dashboard" : `${RN[U.role] || "Custom Role"} Dashboard`))}</h2><p class="s">${isGlobal() ? "Consolidated view of all colleges" : esc(cn(U.college))}. All figures are counted from records entered in this system.</p>${mSel()}<div class="grid" style="margin-top:12px">`;
-  const st = [...(isGlobal() ? [["Colleges", S.colleges.length]] : []), ["Departments", D.length], ["Reports with data", t.data], ["Zero submissions", t.zero], ["Not reported", t.none], ["Events", E.length], ["Pending college dean approval", n(e => e.status === "PENDING")], ["Pending university approval", n(e => e.status === "DAPPROVED")], ["Verification pending", n(e => e.status === "SUBMITTED")], ["Completed events", n(e => e.status === "COMPLETED")]].filter(([label]) => workflowOn() || !["Events", "Pending college dean approval", "Pending university approval", "Verification pending", "Completed events"].includes(label));
+  const st = [...(isGlobal() ? [["Colleges", S.colleges.length]] : []), ["Departments", D.length], ["Reports with data", t.data], ["Zero submissions", t.zero], ["Not reported", t.none], ["Events", E.length], ["Pending HOD review", n(e => e.status === "PENDING")], ["Pending Dean review", n(e => e.status === "HOD_APPROVED")], ["Pending University authorisation", n(e => e.status === "DAPPROVED")], ["Verification pending", n(e => e.status === "SUBMITTED")], ["Completed events", n(e => e.status === "COMPLETED")]].filter(([label]) => workflowOn() || !["Events", "Pending HOD review", "Pending Dean review", "Pending University authorisation", "Verification pending", "Completed events"].includes(label));
   h += st.map(x => `<div class="card stat"><b>${x[1]}</b><span>${x[0]}</span></div>`).join("") + `</div>`;
   if (!D.length) h += `<div class="card empty" style="margin-top:16px">${isGlobal() ? "Start by adding colleges and users." : hasPerm('dept', 'create') ? "Start by adding departments and department users." : "No department is assigned yet."}</div>`;
   if (isGlobal() && S.colleges.length) h += `<div class="card" style="margin-top:16px"><h3>College-wise reporting status (${M})</h3>${legend}<div class="tw"><table><tr><th>College</th><th>Depts</th><th>Depts complete</th><th>Status</th><th>Submitted to university</th></tr>${S.colleges.map(c => { const ds = S.depts.filter(d => d.college === c.id); return `<tr><td>${esc(c.name)}</td><td>${ds.length}</td><td>${ds.filter(deptDone).length}</td><td>${bar(tally(ds))}</td><td>${(S.subs[c.id + "|" + M] || (ds.length > 0 && ds.every(deptDone))) ? '<span class="ok">Yes</span>' : "No"}</td></tr>` }).join("")}</table></div></div>`;
@@ -2391,19 +2537,19 @@ function getF(F, scope = document, selectedFiles = FS) {
 const gateList = (hk = "evo") => {
   const D = myDepts()[0];
   const isPart = hk === "part";
-  const E = D ? S.events.filter(e => e.dept === D.id && (isPart ? (e.isPart || e.partType || (e.num && (e.num.includes('/O/') || e.num.includes('/F/')))) : (!e.isPart && !e.partType && !(e.num && (e.num.includes('/O/') || e.num.includes('/F/'))))) && ["PENDING", "DAPPROVED", "RETURNED", "APPROVED", "CRETURNED", "SUBMITTED", "COMPLETED"].includes(e.status)) : [];
-  return E.length ? `<div class="tw" style="margin-bottom:14px"><table><tr><th>Approval ID</th><th>Event</th><th>Status</th><th></th></tr>${[...E].reverse().map(e => `<tr><td><code>${esc(e.num)}</code></td><td>${esc(e.title)}</td><td>${badge(e.status)}</td><td>${["APPROVED", "CRETURNED", "SUBMITTED", "COMPLETED"].includes(e.status) ? `<button class="sm" onclick="evOpen('${e.id}','${hk}')">Use this Approval ID</button>` : e.status === "RETURNED" ? `<a href="#/events/edit/${e.id}"><button class="sm g">Correct form</button></a>` : "<small>Awaiting approval</small>"}</td></tr>`).join("")}</table></div>` : "";
+  const E = D ? S.events.filter(e => e.dept === D.id && (isPart ? isPartEvent(e) : !isPartEvent(e)) && ["PENDING", "HOD_APPROVED", "DAPPROVED", "RETURNED", "APPROVED", "CRETURNED", "SUBMITTED", "COMPLETED"].includes(e.status)) : [];
+  return E.length ? `<div class="tw" style="margin-bottom:14px"><table><tr><th>Approval ID</th><th>Event Title</th><th>Status</th><th>Access</th></tr>${[...E].reverse().map(e => `<tr><td><code>${esc(e.num)}</code></td><td>${esc(e.title)}</td><td>${badge(e.status, e)}</td><td>${["APPROVED", "CRETURNED", "SUBMITTED", "COMPLETED"].includes(e.status) ? `<button class="sm" onclick="evOpen('${e.id}','${hk}')">Use this Approval ID →</button>` : e.status === "RETURNED" ? `<a href="#/events/edit/${e.id}"><button class="sm g">Correct form</button></a>` : e.status === "PENDING" ? "<small style='color:var(--mu)'>⏳ With Department HOD</small>" : e.status === "HOD_APPROVED" ? "<small style='color:var(--mu)'>⏳ With Dean / Principal</small>" : e.status === "DAPPROVED" ? `<small style='color:var(--mu)'>⏳ With ${isPart ? "Dean Research, ACU" : "Central IQAC"}</small>` : "<small>In Review</small>"}</td></tr>`).join("")}</table></div>` : "";
 };
 const gateHtml = (hk = "evo") => {
   const isPart = hk === "part";
   const title = isPart ? "Academic Participation is locked" : "Event Organize is locked";
   const desc = isPart
-    ? "<b>No approval → no Academic Participation.</b> Enter the Approval ID of an approved event. The title, dates, mode, institution, attendee and financial details are taken from the approval automatically."
-    : "<b>No approval → no Event Organize.</b> Enter the Approval ID of an approved event. The college, department, faculty and event are taken from the approval automatically.";
+    ? "<b>Approval required before entering Academic Participation.</b> The workflow requires sequential review: <b>Department User → Department HOD → Dean / Principal → Dean Research, ACU</b>. Once finally authorised, this heading unlocks automatically."
+    : "<b>Approval required before entering Event Organize.</b> The workflow requires sequential review: <b>Department User → Department HOD → Dean / Principal → Central IQAC</b>. Once finally authorised, this heading unlocks automatically.";
   const col = myCols()[0] || {};
   const exCode = (col.code || "SACCP").toUpperCase();
   const exId = isPart ? `IQAC/${exCode}/O/01/${getFinYear()}` : `IQAC/${exCode}/01/${getFinYear()}`;
-  return `<div class="card"><h3>${title}</h3><p class="lg">${desc}</p><ol class="lg" style="margin:0 0 12px 18px"><li>Go to <b>Event reporting → + New event approval</b> (or click below), fill the <b>${isPart ? "Participation approval form" : "Event approval form"}</b> and submit it.</li><li>Once it has both approvals (College Dean &amp; University Admin), copy its <b>Approval ID</b> (e.g. <code>${exId}</code>).</li><li>Come back here, paste that Approval ID below, and ${isPart ? "Academic Participation" : "Events Organized"} unlocks.</li></ol><div style="margin:0 0 14px"><a href="${isPart ? "#/events/new/part" : "#/events/new"}"><button>${isPart ? "Fill Participation Approval Form" : "Fill Event Approval Form"}</button></a></div>${gateList(hk)}<div style="max-width:420px"><label>Approval ID</label><input id="g_id" placeholder="e.g. ${exId}"></div><button id="g_go">Verify Approval ID</button><div id="g_out" style="margin-top:10px"></div></div>`;
+  return `<div class="card"><h3>${title}</h3><p class="lg">${desc}</p><ol class="lg" style="margin:0 0 12px 18px"><li>Go to <b>Event reporting → + New event approval</b> (or click below), fill the <b>${isPart ? "Participation approval form" : "Event approval form"}</b> and submit it to your HOD.</li><li>The proposal is reviewed by your <b>Department HOD</b>, recommended to the <b>Dean / Principal</b>, and granted final authorisation by <b>${isPart ? "Dean Research, ACU" : "Central IQAC"}</b>.</li><li>Once fully approved, click <b>Use this Approval ID</b> below, and ${isPart ? "Academic Participation" : "Events Organized"} unlocks.</li></ol><div style="margin:0 0 14px"><a href="${isPart ? "#/events/new/part" : "#/events/new"}"><button>${isPart ? "Fill Participation Approval Form" : "Fill Event Approval Form"}</button></a></div>${gateList(hk)}<div style="max-width:420px"><label>Approval ID</label><input id="g_id" placeholder="e.g. ${exId}"></div><button id="g_go">Verify Approval ID</button><div id="g_out" style="margin-top:10px"></div></div>`;
 };
 const evBanner = e => `<div class="note"><b>Approval ID verified:</b> <code>${esc(e.num)}</code> ${badge(e.status)}<br>College: ${esc(cn((S.depts.find(d => d.id === e.dept) || {}).college))} · Department: ${esc(dn(e.dept))} · Faculty: ${esc(e.faculty || "—")}${e.conv ? " · Convener: " + esc(e.conv) : ""}<br>Event: ${esc(e.title)} · Approved dates: ${e.date}${e.dateTo ? " to " + e.dateTo : ""}<br>Fields marked "from approval" are locked. Reporting ${cyclePeriod()}: ${dateToM(e.date)}.${e.status === "CRETURNED" && e.remark ? `<br><b>Returned:</b> ${esc(e.remark)}` : ""}<br><button class="g sm" id="g_x">Use a different Approval ID</button></div>`;
 function monthly(hk, rid) {
@@ -2491,11 +2637,25 @@ ${!rs.length && !z ? `<div class="card"><h3>No activity this ${cyclePeriod()}</h
       fe.recId = rec.id;
       fe.status = "SUBMITTED";
       fe.comp = { count: +(d["Number of Participants"] || 0), date: fe.date };
-      fe.hist.push([new Date().toISOString(), "Event Organize report " + (ed ? "resubmitted" : "submitted") + " by " + U.name]);
+      fe.hist.push([new Date().toISOString(), "Event Organize report " + (ed ? "resubmitted" : "submitted") + " within 24 hours by " + U.name]);
+      sendNotice({
+        event: fe,
+        status: "SUBMITTED",
+        title: `Event Organize Report Submitted: ${fe.title}`,
+        message: `${U.name} submitted completion report for "${fe.title}" (${dn(fe.dept)}) within 24 hours. Awaiting final review & documentation verification.`
+      });
       EVU = null;
     } else if (hk === "part") {
       fe.partRecId = rec.id;
-      fe.hist.push([new Date().toISOString(), "Academic Participation report " + (ed ? "resubmitted" : "submitted") + " by " + U.name]);
+      fe.status = "SUBMITTED";
+      fe.comp = { date: fe.date };
+      fe.hist.push([new Date().toISOString(), "Academic Participation report " + (ed ? "resubmitted" : "submitted") + " within 24 hours by " + U.name]);
+      sendNotice({
+        event: fe,
+        status: "SUBMITTED",
+        title: `Academic Participation Report Submitted: ${fe.title}`,
+        message: `${U.name} submitted completion report for "${fe.title}" (${dn(fe.dept)}) within 24 hours. Awaiting final review & documentation verification.`
+      });
       EVU = null;
     }
     await save();
@@ -2511,7 +2671,13 @@ ${!rs.length && !z ? `<div class="card"><h3>No activity this ${cyclePeriod()}</h
     const v = $("#g_id").value.trim().toUpperCase(), o = $("#g_out"); if (!v) return;
     const e = S.events.find(x => (x.num || "").toUpperCase() === v && x.dept === D.id);
     if (!e) { o.innerHTML = '<div class="note er">Approval ID not found for your department.</div>'; return; }
-    const m = { PENDING: "This Approval ID is still awaiting College Dean approval.", DAPPROVED: "This Approval ID is awaiting University Admin final approval.", RETURNED: "This approval was returned for correction. Correct and resubmit the approval form first.", REJECTED: "This approval was rejected. Report submission is not allowed." }[e.status];
+    const m = {
+      PENDING: "This proposal is awaiting Department HOD review.",
+      HOD_APPROVED: "This proposal is awaiting College Dean / Principal review.",
+      DAPPROVED: isPartEvent(e) ? "This proposal is awaiting Dean Research, ACU final authorisation." : "This proposal is awaiting Central IQAC final authorisation.",
+      RETURNED: "This proposal was returned for correction. Please correct and resubmit the form first.",
+      REJECTED: "This proposal was rejected. Participation or event reporting is not allowed."
+    }[e.status];
     if (m) { o.innerHTML = `<div class="note er">${m}</div>`; return; }
     EVU = e.id;
     setM(dateToM(e.date));
@@ -2721,26 +2887,45 @@ ${approvalPaper(e || {}, { editable: true, isNew: !e, isPart, partRole: e?.partT
         // Only University Admin can customize the reference. Others always receive the system-calculated sequence:
         const num = isUnivAdmin && refInp ? refInp : calcNum;
 
-        S.events.push({ id: uid(), num, dept: D.id, isPart: Boolean(isPart), partType: pCode, category: isPart ? "part" : "evo", ...o, by: U.name, byEmail: U.email || "", submittedAt: new Date().toISOString(), hist: [[new Date().toISOString(), "Submitted for approval"]] })
+        const newEv = { id: uid(), num, dept: D.id, isPart: Boolean(isPart), partType: pCode, category: isPart ? "part" : "evo", ...o, status: "PENDING", by: U.name, byEmail: U.email || "", submittedAt: new Date().toISOString(), hist: [[new Date().toISOString(), "Submitted for Department HOD Review by " + U.name]] };
+        S.events.push(newEv);
+        sendNotice({
+          event: newEv,
+          status: "PENDING",
+          title: `New ${isPart ? "Academic Participation" : "Event"} Proposal Submitted`,
+          message: `${U.name} submitted proposal "${newEv.title}" (${dn(D.id)}). Awaiting Department HOD review.`
+        });
       }
       save(); location.hash = "#/events"; route()
     }; return
   }
   if (a === "view") {
     const e = S.events.find(x => x.id === id); if (!e || !E.includes(e)) return $("#app").innerHTML = '<div class="card empty">Event not found in your scope.</div>'; const c = e.comp, d = S.depts.find(x => x.id === e.dept) || {};
-    $("#app").innerHTML = `<p><a href="#/events">← Events</a></p><h2>Event master record</h2><div class="card"><code>${esc(e.num)}</code> ${badge(e.status)}<h3 style="margin:8px 0 0">${esc(e.title)}</h3><small>${esc(cn(d.college))} · ${esc(d.name)}</small></div>
+    $("#app").innerHTML = `<p><a href="#/events">← Events</a></p><h2>Event Master Record</h2>${workflowStepper(e)}<div class="card"><code>${esc(e.num)}</code> ${badge(e.status, e)}<h3 style="margin:8px 0 0">${esc(e.title)}</h3><small>${esc(cn(d.college))} · ${esc(d.name)}</small></div>
 ${apForm(e)}<div class="approval-actions noprint"><button class="g" onclick="printApprovalForm()">Print approval form</button></div>
 ${articlePreview(e)}
-<div class="card"><h3>Event Organize report</h3>${orgRec(e) || c ? repBlock(e) : '<div class="empty">Not filed yet. It unlocks only after Dean / Principal approval.</div>'}</div>
-<div class="card"><h3>Academic Participation report</h3>${(() => { const pr = S.recs.find(r => (r.evId === e.id || r.id === e.partRecId) && r.head === "part"); return pr ? repHtml(H.find(h => h[0] === "part"), pr) : '<div class="empty">Not filed yet.</div>'; })()}</div>
-<div class="card"><h3>Approval history</h3>${(e.approvals || []).length ? `<div class="tw"><table><tr><th>Stage</th><th>Decision</th><th>Approver</th><th>Remarks</th><th>When</th></tr>${e.approvals.map(a => `<tr><td>${esc(a.stage === "dean" ? "College Dean" : a.stage === "university" ? "University Admin" : "Verification")}</td><td>${esc((ST[a.decision] || [a.decision])[0])}</td><td>${esc(a.byName || "—")}</td><td>${esc(a.remarks || "—")}</td><td>${String(a.at || "").slice(0, 16).replace("T", " ")}</td></tr>`).join("")}</table></div>` : '<div class="empty">No approval decision recorded yet.</div>'}</div>
+<div class="card"><h3>Event Organize report</h3>${orgRec(e) || c ? repBlock(e) : '<div class="empty">Not filed yet. It unlocks only after Central IQAC final authorisation.</div>'}</div>
+<div class="card"><h3>Academic Participation report</h3>${(() => { const pr = S.recs.find(r => (r.evId === e.id || r.id === e.partRecId) && r.head === "part"); return pr ? repHtml(H.find(h => h[0] === "part"), pr) : '<div class="empty">Not filed yet. It unlocks only after Dean Research, ACU final authorisation.</div>'; })()}</div>
+<div class="card"><h3>Approval history</h3>${(e.approvals || []).length ? `<div class="tw"><table><tr><th>Stage</th><th>Decision</th><th>Approver</th><th>Remarks</th><th>When</th></tr>${e.approvals.map(a => `<tr><td>${esc(a.stage === "hod" ? "Department HOD" : a.stage === "dean" ? "College Dean / Principal" : a.stage === "university" ? (isPartEvent(e) ? "Dean Research, ACU" : "Central IQAC") : "Institutional Documentation Officer")}</td><td>${esc((ST[a.decision] || [a.decision])[0])}</td><td>${esc(a.byName || "—")}</td><td>${esc(a.remarks || "—")}</td><td>${String(a.at || "").slice(0, 16).replace("T", " ")}</td></tr>`).join("")}</table></div>` : '<div class="empty">No approval decision recorded yet.</div>'}</div>
 <div class="card"><h3>Workflow &amp; audit trail</h3><div class="tw"><table><tr><th>When</th><th>Action</th></tr>${e.hist.map(h => `<tr><td>${h[0].slice(0, 16).replace("T", " ")}</td><td>${esc(h[1])}</td></tr>`).join("")}</table></div></div>`; hydrate($("#app")); return
   }
   if (a === "done") { evOpen(id); return }
   // Roles whose menu has no "Event Reporting" entry (Super Admin, College Admin, University Admin)
   // still open this page from the dashboard's "Recent events" card, but as a read-only full list.
   const ro = !NAV.includes("events"), canFile = !ro && isD, gl = isGlobal();
-  $("#app").innerHTML = `${ro ? `<p><a href="#/dash">← Dashboard</a></p>` : ""}<h2>${ro ? "All events" : "Event reporting"}</h2><p class="s">College Dean approval → University final approval → Event Organize (needs the Approval ID) → Verification, all under one Event ID.${E.length ? ` Showing all ${E.length} event${E.length === 1 ? "" : "s"} in your scope.` : ""}</p>${canFile ? `<a href="#/events/new"><button>+ New event approval</button></a>` : ""}<div class="card" style="margin-top:12px">${E.length ? `<div class="tw"><table><tr>${gl ? "<th>College</th>" : ""}<th>Event ID</th><th>Event</th><th>Department</th><th>Date</th><th>Status</th><th></th></tr>${[...E].reverse().map(e => `<tr>${gl ? `<td>${esc(cn(eCollege(e)))}</td>` : ""}<td><a href="#/events/view/${e.id}"><code>${esc(e.num)}</code></a></td><td>${esc(e.title)}</td><td>${esc(dn(e.dept))}</td><td>${e.date}</td><td>${badge(e.status)}${e.remark && ["RETURNED", "REJECTED", "CRETURNED"].includes(e.status) ? `<br><small>${esc(e.remark)}</small>` : ""}</td><td>${canFile && (e.status === "APPROVED" || e.status === "CRETURNED") ? `<div style="display:flex;gap:4px;flex-wrap:wrap"><button class="sm" onclick="evOpen('${e.id}','evo')">Open Event Organize</button><button class="sm g" onclick="evOpen('${e.id}','part')">Open Academic Participation</button></div>` : canFile && e.status === "RETURNED" ? `<a href="#/events/edit/${e.id}"><button class="sm">Correct</button></a>` : ""}</td></tr>`).join("")}</table></div>` : '<div class="empty">No events yet.</div>'}</div>`
+  $("#app").innerHTML = `${ro ? `<p><a href="#/dash">← Dashboard</a></p>` : ""}<h2>${ro ? "All events" : "Event reporting"}</h2><p class="s">College Dean approval → University final approval → Event Organize (needs the Approval ID) → Verification, all under one Event ID.${E.length ? ` Showing all ${E.length} event${E.length === 1 ? "" : "s"} in your scope.` : ""}</p>${canFile ? `<a href="#/events/new"><button>+ New event approval</button></a>` : ""}<div class="card" style="margin-top:12px">${E.length ? `<div class="tw"><table><tr>${gl ? "<th>College</th>" : ""}<th>Event ID</th><th>Event</th><th>Department</th><th>Date</th><th>Status</th><th></th></tr>${[...E].reverse().map(e => `<tr>${gl ? `<td>${esc(cn(eCollege(e)))}</td>` : ""}<td><a href="#/events/view/${e.id}"><code>${esc(e.num)}</code></a></td><td>${esc(e.title)}</td><td>${esc(dn(e.dept))}</td><td>${e.date}</td><td>${badge(e.status)}${e.remark && ["RETURNED", "REJECTED", "CRETURNED"].includes(e.status) ? `<br><small>${esc(e.remark)}</small>` : ""}</td><td>${canFile && (e.status === "APPROVED" || e.status === "CRETURNED") ? (
+  isPartEvent(e)
+    ? `<button class="sm g" onclick="evOpen('${e.id}','part')">Open Academic Participation →</button>`
+    : `<button class="sm" onclick="evOpen('${e.id}','evo')">Open Event Organize →</button>`
+) : canFile && e.status === "RETURNED" ? (
+  `<a href="#/events/edit/${e.id}"><button class="sm">Correct Form</button></a>`
+) : canFile && e.status === "PENDING" ? (
+  `<small style="color:var(--mu)">⏳ With Department HOD</small>`
+) : canFile && e.status === "HOD_APPROVED" ? (
+  `<small style="color:var(--mu)">⏳ With Dean / Principal</small>`
+) : canFile && e.status === "DAPPROVED" ? (
+  `<small style="color:var(--mu)">⏳ With ${isPartEvent(e) ? "Dean Research, ACU" : "Central IQAC"}</small>`
+) : ""}</td></tr>`).join("")}</table></div>` : '<div class="empty">No events yet.</div>'}</div>`
 }
 function dRows() {
   const E = myEv().filter(e => e.date === DD), ap = ["APPROVED", "SUBMITTED", "CRETURNED", "COMPLETED"];
@@ -2858,56 +3043,150 @@ function shrink(f) { return new Promise(r => { const i = new Image; i.onload = (
 function review() {
   if (!workflowOn()) return workflowUnavailable();
   const E = myEv();
-  const P = E.filter(e => e.status === "PENDING"), D = E.filter(e => e.status === "DAPPROVED"), V = E.filter(e => e.status === "SUBMITTED");
-  const isHOD = U && U.role === "hod";
-  const hodStage = isHOD;
-  const deanStage = isSU() || (U && U.role === "dean") || hodStage;
-  const univStage = isGlobal();
-  const verStage = isHOD || canBackView() || hasPerm('events', 'verify') || (U && (U.role === "ca" || U.role === "dean"));
-  const open = window.REVIEW_OPEN && E.find(e => e.id === window.REVIEW_OPEN && ["PENDING", "DAPPROVED", "SUBMITTED"].includes(e.status));
+  const P = E.filter(e => e.status === "PENDING"); // Stage 1: Department HOD Review
+  const H = E.filter(e => e.status === "HOD_APPROVED"); // Stage 2: College Dean / Principal Review
+  const D = E.filter(e => e.status === "DAPPROVED"); // Stage 3: University Authorisation
+  const V = E.filter(e => e.status === "SUBMITTED"); // Stage 4: Completion Verification
+
+  const isHOD = !!U && U.role === "hod";
+  const isDean = !!U && U.role === "dean";
+  const isIQACUser = isIQAC();
+  const isDeanResearchUser = isDeanResearch();
+  const isDocOfficerUser = isDocOfficer();
+  const isSUUser = isSU();
+
+  const hodStage = isHOD || isSUUser;
+  const deanStage = isDean || isSUUser;
+  const univStage = isSUUser || isIQACUser || isDeanResearchUser || (isGlobal() && !['ca', 'dean', 'hod', 'dept'].includes(U.role));
+  const verStage = isDocOfficerUser || isIQACUser || isDeanResearchUser || hodStage || deanStage || hasPerm('events', 'verify');
+
+  const open = window.REVIEW_OPEN && E.find(e => e.id === window.REVIEW_OPEN && ["PENDING", "HOD_APPROVED", "DAPPROVED", "SUBMITTED"].includes(e.status));
   if (!open) window.REVIEW_OPEN = null;
-  const row = e => `<div class="card" style="cursor:pointer;padding:12px 16px" onclick="window.REVIEW_OPEN='${e.id}';review()"><code>${esc(e.num)}</code> ${badge(e.status)} <b style="margin-left:8px">${esc(e.title)}</b> <small style="float:right">${esc(dn(e.dept))} · ${e.date} — Open form →</small></div>`;
+
+  const row = e => `<div class="card" style="cursor:pointer;padding:12px 16px;margin-bottom:10px" onclick="window.REVIEW_OPEN='${e.id}';review()"><code>${esc(e.num)}</code> ${badge(e.status, e)} <b style="margin-left:8px">${esc(e.title)}</b> <small style="float:right">${esc(dn(e.dept))} · ${e.date} — Open form →</small></div>`;
   const back = `<button class="g sm" onclick="window.REVIEW_OPEN=null;review()">← Back to approvals</button>`;
-  const card = (e, approveTo, approveLabel) => `<div class="card"><code>${esc(e.num)}</code> ${badge(e.status)}<h3 style="margin:6px 0 0">${esc(e.title)}</h3><small>${esc(cn(eCollege(e)))} · ${esc(dn(e.dept))} · ${e.date} · ${esc(e.venue || "venue not given")} · ${esc(e.type || "")}</small>${apForm(e)}<input id="n_${e.id}" placeholder="Remarks (required for return / reject)"><button class="k sm" onclick="dec('${e.id}','${approveTo}')">${approveLabel}</button><button class="g sm" onclick="dec('${e.id}','RETURNED')">Return</button><button class="r sm" onclick="dec('${e.id}','REJECTED')">Reject</button></div>`;
+  const card = (e, approveTo, approveLabel) => `<div class="card">${workflowStepper(e)}<code>${esc(e.num)}</code> ${badge(e.status, e)}<h3 style="margin:6px 0 0">${esc(e.title)}</h3><small>${esc(cn(eCollege(e)))} · ${esc(dn(e.dept))} · ${e.date} · ${esc(e.venue || "venue not given")} · ${esc(e.type || "")}</small>${apForm(e)}<input id="n_${e.id}" placeholder="Remarks (required for return / reject)"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="k sm" onclick="dec('${e.id}','${approveTo}')">${approveLabel}</button><button class="g sm" onclick="dec('${e.id}','RETURNED')">Return for correction</button><button class="r sm" onclick="dec('${e.id}','REJECTED')">Reject</button></div></div>`;
+
   if (open) {
-    const vcard = e => `<div class="card"><code>${esc(e.num)}</code> ${badge(e.status)}<h3 style="margin:6px 0 0">${esc(e.title)}</h3><small>${esc(cn(eCollege(e)))} · approved for ${e.date}, ${esc(e.venue || "")}</small>${repBlock(e)}<input id="n_${e.id}" placeholder="Remarks (required for return)"><button class="k sm" onclick="dec('${e.id}','COMPLETED')">Verify</button><button class="g sm" onclick="dec('${e.id}','CRETURNED')">Return for correction</button></div>`;
-    let approveBtnLabel = "Final Approve";
-    if (isIQACRole) approveBtnLabel = "Authorise Event (Central IQAC)";
-    else if (isDeanResearchRole) approveBtnLabel = "Authorise Participation (Dean Research)";
-    else if (isDocOfficerRole) approveBtnLabel = "Verify Documentation";
-    const canUnivDecide = univStage && (isSU() || (isIQACRole && !isPartEvent(open)) || (isDeanResearchRole && isPartEvent(open)));
-    const body = open.status === "PENDING" && deanStage ? card(open, "DAPPROVED", hodStage ? "Approve (HOD)" : "Approve") : open.status === "DAPPROVED" && canUnivDecide ? card(open, "APPROVED", approveBtnLabel) : open.status === "SUBMITTED" && verStage ? vcard(open) : '';
-    if (body) { $("#app").innerHTML = `<h2>Approvals &amp; verification</h2>${back}${body}`; hydrate($("#app")); return }
+    const vcard = e => `<div class="card">${workflowStepper(e)}<code>${esc(e.num)}</code> ${badge(e.status, e)}<h3 style="margin:6px 0 0">${esc(e.title)}</h3><small>${esc(cn(eCollege(e)))} · approved for ${e.date}, ${esc(e.venue || "")}</small>${repBlock(e)}<input id="n_${e.id}" placeholder="Remarks (required for return)"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="k sm" onclick="dec('${e.id}','COMPLETED')">Verify &amp; Document Complete</button><button class="g sm" onclick="dec('${e.id}','CRETURNED')">Return for correction</button></div></div>`;
+    let body = "";
+    if (open.status === "PENDING" && hodStage) {
+      body = card(open, "HOD_APPROVED", "Approve &amp; Forward to Dean / Principal");
+    } else if (open.status === "HOD_APPROVED" && deanStage) {
+      const isPart = isPartEvent(open);
+      body = card(open, "DAPPROVED", isPart ? "Recommend to Dean Research, ACU" : "Recommend to Central IQAC");
+    } else if (open.status === "DAPPROVED" && univStage) {
+      const isPart = isPartEvent(open);
+      const canUnivApprove = isSUUser || (isPart && isDeanResearchUser) || (!isPart && isIQACUser) || (isGlobal() && !['ca', 'dean', 'hod', 'dept', 'iqac', 'dean_research', 'doc_officer'].includes(U.role));
+      if (canUnivApprove) {
+        body = card(open, "APPROVED", isPart ? "Authorise Participation (Dean Research, ACU)" : "Authorise Event (Central IQAC)");
+      }
+    } else if (open.status === "SUBMITTED" && verStage) {
+      body = vcard(open);
+    }
+    if (body) {
+      $("#app").innerHTML = `<h2>Approvals &amp; Verification</h2>${back}${body}`;
+      hydrate($("#app"));
+      return;
+    }
     window.REVIEW_OPEN = null;
   }
+
   const q = (window.REVIEW_Q || "").toLowerCase(), sf = window.REVIEW_SF || "";
-  const inSf = e => !sf || (sf === "Pending" ? ["PENDING", "DAPPROVED"].includes(e.status) : sf === "Approved" ? ["APPROVED", "SUBMITTED", "COMPLETED"].includes(e.status) : sf === "Rejected" ? ["REJECTED", "RETURNED", "CRETURNED"].includes(e.status) : true);
+  const inSf = e => !sf || (sf === "Pending" ? ["PENDING", "HOD_APPROVED", "DAPPROVED"].includes(e.status) : sf === "Approved" ? ["APPROVED", "SUBMITTED", "COMPLETED"].includes(e.status) : sf === "Rejected" ? ["REJECTED", "RETURNED", "CRETURNED"].includes(e.status) : true);
   const all = [...E].reverse().filter(e => inSf(e) && (!q || (e.num + " " + e.title + " " + (e.by || "") + " " + dn(e.dept) + " " + cn(eCollege(e))).toLowerCase().includes(q)));
-  $("#app").innerHTML = `<h2>Approvals &amp; verification</h2><p class="s">Every decision is recorded against the Event ID. An event moves College Dean → University Admin → Event Organize → Verification.</p>` +
-    (hodStage ? `<h3>1. Department Event approvals (${P.length})</h3>${P.map(row).join("") || '<div class="card empty">No pending department approvals.</div>'}` : deanStage ? `<h3>1. College Dean approvals (${P.length})</h3>${P.map(row).join("") || '<div class="card empty">Nothing waiting.</div>'}` : '') +
-    (univStage ? `<h3>2. University final approvals (${D.length})</h3>${D.map(row).join("") || '<div class="card empty">Nothing waiting.</div>'}` : '') +
-    (verStage ? `<h3>${hodStage ? "2" : "3"}. Completion verification (${V.length})</h3>${V.map(row).join("") || '<div class="card empty">Nothing waiting for verification.</div>'}` : '') +
-    `<h3>All requests</h3><div class="card"><div class="back-filters bv-filters"><div><label for="rv_q">Search</label><input id="rv_q" type="search" value="${esc(window.REVIEW_Q || "")}" placeholder="Event ID, title, requester, college, department"></div><div><label for="rv_sf">Status</label><select id="rv_sf"><option value="">All Requests</option>${["Pending", "Approved", "Rejected"].map(o => `<option ${sf === o ? "selected" : ""}>${o}</option>`).join("")}</select></div></div>${all.length ? `<div class="tw" style="margin-top:10px"><table><tr><th>Event ID</th><th>Event</th><th>Requester</th><th>College</th><th>Department</th><th>Submitted</th><th>Status</th><th></th></tr>${all.map(e => `<tr><td><code>${esc(e.num)}</code></td><td>${esc(e.title)}</td><td>${esc(e.by || "—")}</td><td>${esc(cn(eCollege(e)))}</td><td>${esc(dn(e.dept))}</td><td>${String(e.submittedAt || (e.hist && e.hist[0] && e.hist[0][0]) || "").slice(0, 10)}</td><td>${badge(e.status)}</td><td><a href="#/events/view/${e.id}"><button class="g sm">View</button></a>${["PENDING", "DAPPROVED", "SUBMITTED"].includes(e.status) ? ` <button class="sm" onclick="window.REVIEW_OPEN='${e.id}';review()">Open form</button>` : ""}</td></tr>`).join("")}</table></div>` : '<div class="empty">No requests match.</div>'}</div>`;
+
+  const orgUnivQueue = D.filter(e => !isPartEvent(e));
+  const partUnivQueue = D.filter(isPartEvent);
+
+  $("#app").innerHTML = `<h2>Approvals &amp; Verification</h2>
+<p class="s">Multi-stage academic workflow: <b>Department User → Department HOD → Dean / Principal → Central IQAC (Events) / Dean Research (Participation) → Conduct Activity → Final Review &amp; Documentation</b>.</p>` +
+    (hodStage ? `<h3>1. Department HOD Approvals (${P.length})</h3>${P.map(row).join("") || '<div class="card empty">No pending department HOD approvals.</div>'}` : "") +
+    (deanStage ? `<h3>2. College Dean / Principal Approvals (${H.length})</h3>${H.map(row).join("") || '<div class="card empty">No proposals awaiting Dean / Principal review.</div>'}` : "") +
+    (univStage ? (
+      (isIQACUser || isSUUser ? `<h3>3a. Central IQAC Event Authorisations (${orgUnivQueue.length})</h3>${orgUnivQueue.map(row).join("") || '<div class="card empty">No event proposals awaiting Central IQAC authorisation.</div>'}` : "") +
+      (isDeanResearchUser || isSUUser ? `<h3>3b. Dean Research Academic Participation Authorisations (${partUnivQueue.length})</h3>${partUnivQueue.map(row).join("") || '<div class="card empty">No participation proposals awaiting Dean Research authorisation.</div>'}` : "") +
+      (!isIQACUser && !isDeanResearchUser && !isSUUser ? `<h3>3. University Final Authorisations (${D.length})</h3>${D.map(row).join("") || '<div class="card empty">No proposals awaiting university authorisation.</div>'}` : "")
+    ) : "") +
+    (verStage ? `<h3>4. Completion Verification &amp; Evidence Documentation (${V.length})</h3>${V.map(row).join("") || '<div class="card empty">Nothing waiting for completion verification.</div>'}` : "") +
+    `<h3>All Requests &amp; Records</h3><div class="card"><div class="back-filters bv-filters"><div><label for="rv_q">Search</label><input id="rv_q" type="search" value="${esc(window.REVIEW_Q || "")}" placeholder="Event ID, title, requester, college, department"></div><div><label for="rv_sf">Status</label><select id="rv_sf"><option value="">All Requests</option>${["Pending", "Approved", "Rejected"].map(o => `<option ${sf === o ? "selected" : ""}>${o}</option>`).join("")}</select></div></div>${all.length ? `<div class="tw" style="margin-top:10px"><table><tr><th>Event ID</th><th>Event &amp; Type</th><th>Requester</th><th>College</th><th>Department</th><th>Submitted</th><th>Status</th><th></th></tr>${all.map(e => `<tr><td><code>${esc(e.num)}</code></td><td><b>${esc(e.title)}</b><br><small style="color:var(--mu)">${isPartEvent(e) ? "Academic Participation" : "Event Organize"}</small></td><td>${esc(e.by || "—")}</td><td>${esc(cn(eCollege(e)))}</td><td>${esc(dn(e.dept))}</td><td>${String(e.submittedAt || (e.hist && e.hist[0] && e.hist[0][0]) || "").slice(0, 10)}</td><td>${badge(e.status, e)}</td><td><a href="#/events/view/${e.id}"><button class="g sm">View</button></a>${["PENDING", "HOD_APPROVED", "DAPPROVED", "SUBMITTED"].includes(e.status) ? ` <button class="sm" onclick="window.REVIEW_OPEN='${e.id}';review()">Open Form</button>` : ""}</td></tr>`).join("")}</table></div>` : '<div class="empty">No requests match.</div>'}</div>`;
   $("#rv_q").oninput = () => { window.REVIEW_Q = $("#rv_q").value; review(); const el = $("#rv_q"); el.focus(); el.setSelectionRange(el.value.length, el.value.length) };
   $("#rv_sf").onchange = () => { window.REVIEW_SF = $("#rv_sf").value; review() };
-  hydrate($("#app"))
+  hydrate($("#app"));
 }
+
 function dec(id, s) {
-  const e = S.events.find(x => x.id === id), n = $("#n_" + id).value.trim();
+  const e = S.events.find(x => x.id === id), n = ($("#n_" + id) ? $("#n_" + id).value.trim() : "");
   if (["RETURNED", "REJECTED", "CRETURNED"].includes(s) && !n) return alert("Please add a remark.");
   const ok = ["COMPLETED", "CRETURNED"].includes(s) ? canVerify(e) : canDecide(e, s);
   if (!ok) return alert("This event is not waiting for a decision from your approval stage.");
-  if (!confirm(`Confirm: mark "${e.title}" as ${ST[s][0]}${n ? " with remark: " + n : ""}?`)) return;
-  const stage = approvalStage(e.status) || "verification", at = new Date().toISOString();
-  e.status = s; e.remark = n;
-  e.hist.push([at, ST[s][0] + " by " + U.name + (n ? ": " + n : "")]);
-  (e.approvals = e.approvals || []).push({ stage, decision: s, by: U.id, byName: U.name, remarks: n, at });
-  window.REVIEW_OPEN = null; save(); review()
+
+  const isPart = isPartEvent(e);
+  let targetStatus = s;
+  let stageName = approvalStage(e.status) || "verification";
+  let noticeTitle = "";
+  let noticeMsg = "";
+
+  if (s === "HOD_APPROVED" || (stageName === "hod" && (s === "DAPPROVED" || s === "APPROVED"))) {
+    targetStatus = "HOD_APPROVED";
+    stageName = "hod";
+    noticeTitle = `HOD Recommended: ${e.title}`;
+    noticeMsg = `HOD ${U.name} reviewed and recommended proposal "${e.title}" (${dn(e.dept)}). Forwarded to College Dean / Principal for review.`;
+  } else if (s === "DAPPROVED" || (stageName === "dean" && s === "APPROVED")) {
+    targetStatus = "DAPPROVED";
+    stageName = "dean";
+    noticeTitle = isPart ? `Dean Approved · Sent to Dean Research` : `Dean Approved · Sent to Central IQAC`;
+    noticeMsg = `Dean / Principal ${U.name} approved proposal "${e.title}" (${cn(eCollege(e))}). Forwarded to ${isPart ? "Dean Research, ACU" : "Central IQAC"} for final university authorisation.`;
+  } else if (s === "APPROVED") {
+    targetStatus = "APPROVED";
+    stageName = "university";
+    noticeTitle = `Final Authorisation Granted: ${e.title}`;
+    noticeMsg = `${isPart ? "Dean Research, ACU" : "Central IQAC"} (${U.name}) granted final authorisation for "${e.title}". The department user can now conduct the activity and enter the report in ${isPart ? "Academic Participation" : "Event Organize"}.`;
+  } else if (s === "RETURNED") {
+    targetStatus = "RETURNED";
+    noticeTitle = `Proposal Returned for Correction: ${e.title}`;
+    noticeMsg = `Proposal "${e.title}" was returned by ${U.name} (${ST[targetStatus]?.[0] || 'Reviewer'}): ${n}`;
+  } else if (s === "REJECTED") {
+    targetStatus = "REJECTED";
+    noticeTitle = `Proposal Rejected: ${e.title}`;
+    noticeMsg = `Proposal "${e.title}" was rejected by ${U.name}: ${n}`;
+  } else if (s === "COMPLETED") {
+    targetStatus = "COMPLETED";
+    stageName = "verification";
+    noticeTitle = `Documentation Complete & Verified: ${e.title}`;
+    noticeMsg = `Final review and institutional documentation completed for "${e.title}" by ${U.name}. The record is officially verified.`;
+  } else if (s === "CRETURNED") {
+    targetStatus = "CRETURNED";
+    stageName = "verification";
+    noticeTitle = `Completion Report Returned for Evidence: ${e.title}`;
+    noticeMsg = `Completion report for "${e.title}" was returned by ${U.name} for additional evidence: ${n}`;
+  }
+
+  const statusLabel = ST[targetStatus] ? ST[targetStatus][0] : targetStatus;
+  if (!confirm(`Confirm: mark "${e.title}" as ${statusLabel}${n ? " with remark: " + n : ""}?`)) return;
+
+  const at = new Date().toISOString();
+  e.status = targetStatus;
+  e.remark = n;
+  e.hist.push([at, statusLabel + " by " + U.name + (n ? ": " + n : "")]);
+  (e.approvals = e.approvals || []).push({ stage: stageName, decision: targetStatus, by: U.id, byName: U.name, remarks: n, at });
+
+  sendNotice({
+    event: e,
+    status: targetStatus,
+    title: noticeTitle,
+    message: noticeMsg
+  });
+
+  window.REVIEW_OPEN = null;
+  save();
+  route();
 }
+
 function notifications() {
-  const N = S.notifications || [], me = window.__ACU.uid;
-  $("#app").innerHTML = `<h2>Approval notices</h2><p class="s">A notice is sent only to the college that submitted the event.</p>` +
-    (N.length ? `<div class="card"><div class="tw"><table><tr><th>Event ID</th><th>Event</th><th>Status</th><th>Notice</th><th>Approval date</th><th></th></tr>${N.map(n => `<tr><td><a href="#/events/view/${esc(n.event_id)}"><code>${esc(n.event_num)}</code></a></td><td>${esc(n.event_title)}</td><td><span class="b ok">${esc(n.status)}</span></td><td>${esc(n.message)}</td><td>${String(n.created_at || "").slice(0, 16).replace("T", " ")}</td><td>${(n.read_by || []).includes(me) ? '<span class="ok">Read</span>' : `<button class="g sm" onclick="readNotice('${esc(n.id)}')">Mark as read</button>`}</td></tr>`).join("")}</table></div></div>` : '<div class="card empty">No notices yet.</div>');
+  const N = (S.notifications || []).filter(isNoticeForMe), me = window.__ACU.uid;
+  $("#app").innerHTML = `<h2>Approval Notices &amp; Workflow Alerts</h2><p class="s">Notifications are delivered in real time for every proposal, review recommendation, university authorisation, and completion report.</p>` +
+    (N.length ? `<div class="card"><div class="tw"><table><tr><th>Event ID</th><th>Event &amp; Type</th><th>Workflow Stage</th><th>Notice</th><th>Reviewer</th><th>Date &amp; Time</th><th></th></tr>${N.map(n => `<tr><td><a href="#/events/view/${esc(n.event_id)}"><code>${esc(n.event_num)}</code></a></td><td><b>${esc(n.event_title)}</b><br><small style="color:var(--mu)">${esc(n.event_type || (n.isPart ? "Academic Participation" : "Event Organization"))}</small></td><td>${badge(n.status)}</td><td><b>${esc(n.title || "")}</b><br><span style="font-size:13px;color:var(--tx)">${esc(n.message)}</span></td><td><small>${esc(n.by || "System")}</small></td><td>${String(n.created_at || "").slice(0, 16).replace("T", " ")}</td><td>${(n.read_by || []).includes(me) ? '<span class="ok" style="font-size:12px;font-weight:600">✓ Read</span>' : `<button class="g sm" onclick="readNotice('${esc(n.id)}')">Mark as read</button>`}</td></tr>`).join("")}</table></div></div>` : '<div class="card empty">No notifications yet.</div>');
 }
 window.readNotice = async function (id) { try { await window.__ACU.markNotificationRead(id); route() } catch (e) { alert("Could not mark this notice as read.") } };
 

@@ -702,3 +702,65 @@ button.sm {
   .approval-table tr{break-inside:avoid}.approval-letterhead,.approval-meta{break-inside:avoid}
   .approval-modes input{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
+
+/* Workflow Visual Stepper (Event Organisation & Academic Participation) */
+.workflow-stepper {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 10px 2px;
+  margin-top: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+.workflow-step {
+  flex: 1;
+  min-width: 125px;
+  background: var(--surface);
+  border: 1.5px solid var(--ln);
+  border-radius: 8px;
+  padding: 10px 8px;
+  text-align: center;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 3px;
+  position: relative;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.workflow-step.completed {
+  background: #F0FDF4;
+  border-color: #86EFAC;
+  color: #166534;
+}
+.workflow-step.active {
+  background: #FFFBEB;
+  border-color: #FDE68A;
+  color: #92400E;
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.22);
+  font-weight: 700;
+}
+.workflow-step.returned {
+  background: #FEF2F2;
+  border-color: #FCA5A5;
+  color: #991B1B;
+  font-weight: 700;
+}
+.workflow-step.upcoming {
+  opacity: 0.55;
+  background: var(--bg);
+  border-color: var(--ln);
+  color: var(--mu);
+}
+.workflow-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--mu);
+  font-size: 14px;
+  user-select: none;
+  font-weight: 700;
+  opacity: 0.6;
+}
