@@ -13,6 +13,8 @@ const deanOfB: ApprovalUser = { role: "dean", college: "colB", dept: null };
 const univAdmin: ApprovalUser = { role: "r_vrjstnum", college: null, dept: null };
 const superAdmin: ApprovalUser = { role: "su", college: null, dept: null };
 const deptUser: ApprovalUser = { role: "dept", college: "colA", dept: "deptA" };
+const hodOfA: ApprovalUser = { role: "hod", college: "colA", dept: "deptA" };
+const hodOfB: ApprovalUser = { role: "hod", college: "colA", dept: "deptB" };
 const collegeAdmin: ApprovalUser = { role: "ca", college: "colA", dept: null };
 
 const pending = { college: "colA", dept: "deptA", status: "PENDING" };
@@ -66,6 +68,15 @@ describe("event approval order", () => {
     expect(canDecideEvent(superAdmin, pending, "DAPPROVED")).toBe(true);
     expect(canDecideEvent(superAdmin, deanApproved, "APPROVED")).toBe(true);
     expect(canDecideEvent(superAdmin, pending, "APPROVED")).toBe(false);
+  });
+
+  it("allows HOD of the department to approve/return/reject and verify completion reports", () => {
+    expect(canDecideEvent(hodOfA, pending, "DAPPROVED")).toBe(true);
+    expect(canDecideEvent(hodOfA, pending, "RETURNED")).toBe(true);
+    expect(canDecideEvent(hodOfA, pending, "REJECTED")).toBe(true);
+    expect(canDecideEvent(hodOfB, pending, "DAPPROVED")).toBe(false);
+    expect(canVerifyEvent(hodOfA, { college: "colA", dept: "deptA", status: "SUBMITTED" })).toBe(true);
+    expect(canVerifyEvent(hodOfB, { college: "colA", dept: "deptA", status: "SUBMITTED" })).toBe(false);
   });
 
   it("opens verification only after the completion report is filed", () => {

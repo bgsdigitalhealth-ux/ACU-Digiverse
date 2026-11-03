@@ -37,6 +37,10 @@ export const isGlobalAdmin = (u: ApprovalUser) =>
 export const isCollegeDean = (u: ApprovalUser, e: ApprovalEvent) =>
   u.role === "dean" && !!e.college && u.college === e.college;
 
+/** A Head of Department attached to the department that owns the event. */
+export const isHodOf = (u: ApprovalUser, e: ApprovalEvent) =>
+  u.role === "hod" && !!e.dept && u.dept === e.dept;
+
 /** Which approval stage a status is waiting at, or null when no approval decision applies. */
 export const approvalStage = (status?: string): "dean" | "university" | null =>
   status === "PENDING" ? "dean" : status === "DAPPROVED" ? "university" : null;
@@ -47,13 +51,13 @@ export const canDecideEvent = (u: ApprovalUser, e: ApprovalEvent, decision: Appr
   if (!stage) return false;
   if (decision === "APPROVED") return stage === "university" && isGlobalAdmin(u);
   const deanStage = stage === "dean";
-  if (decision === "DAPPROVED") return deanStage && (isCollegeDean(u, e) || u.role === "su");
+  if (decision === "DAPPROVED") return deanStage && (isCollegeDean(u, e) || isHodOf(u, e) || u.role === "su");
   if (decision === "RETURNED" || decision === "REJECTED")
-    return deanStage ? isCollegeDean(u, e) || u.role === "su" : isGlobalAdmin(u);
+    return deanStage ? isCollegeDean(u, e) || isHodOf(u, e) || u.role === "su" : isGlobalAdmin(u);
   return false;
 };
 
-/** Verification after the completion report: college-level staff of that college or the university, never the department itself. */
+/** Verification after the completion report: college/HOD-level staff of that college or the university, never the regular department staff. */
 export const canVerifyEvent = (u: ApprovalUser, e: ApprovalEvent) =>
   e.status === "SUBMITTED" &&
-  (isGlobalAdmin(u) || (!!e.college && u.college === e.college && !u.dept && u.role !== "dept"));
+  (isGlobalAdmin(u) || (!!e.college && u.college === e.college && (!u.dept || isHodOf(u, e)) && u.role !== "dept"));

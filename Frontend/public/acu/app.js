@@ -108,8 +108,9 @@ if (!S.notifications) S.notifications = [];
 const eCollege = e => (S.depts.find(d => d.id === (e && e.dept)) || {}).college || (e && e.college) || null;
 const approvalStage = s => s === "PENDING" ? "dean" : s === "DAPPROVED" ? "university" : null;
 const isDeanOf = e => !!U && U.role === "dean" && !!eCollege(e) && U.college === eCollege(e);
-const canDecide = (e, d) => { const st = approvalStage(e && e.status); if (!st) return false; if (d === "APPROVED") return st === "university" && isGlobal(); const deanStage = st === "dean"; if (d === "DAPPROVED") return deanStage && (isDeanOf(e) || isSU()); if (d === "RETURNED" || d === "REJECTED") return deanStage ? (isDeanOf(e) || isSU()) : isGlobal(); return false };
-const canVerify = e => !!e && e.status === "SUBMITTED" && (isGlobal() || (!!eCollege(e) && !!U && U.college === eCollege(e) && !U.dept && U.role !== "dept"));
+const isHodOf = e => !!U && U.role === "hod" && (e && e.dept === U.dept);
+const canDecide = (e, d) => { const st = approvalStage(e && e.status); if (!st) return false; if (d === "APPROVED") return st === "university" && isGlobal(); const deanStage = st === "dean"; if (d === "DAPPROVED") return deanStage && (isDeanOf(e) || isHodOf(e) || isSU()); if (d === "RETURNED" || d === "REJECTED") return deanStage ? (isDeanOf(e) || isHodOf(e) || isSU()) : isGlobal(); return false };
+const canVerify = e => !!e && e.status === "SUBMITTED" && (isGlobal() || (!!eCollege(e) && !!U && U.college === eCollege(e) && (!U.dept || isHodOf(e)) && U.role !== "dept"));
 const unreadNotices = () => (S.notifications || []).filter(n => !(n.read_by || []).includes(window.__ACU.uid)).length;
 const notifBell = () => { const c = unreadNotices(); return `<a class="acu-bell${c ? " has" : ""}" href="#/notifications" title="Approval notices"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${c ? `<span>${c}</span>` : ""}</a>` };
 if (!S.RN) S.RN = { su: "University Admin", ca: "College Admin", dean: "Dean / Principal", hod: "Head of Department (HOD)", dept: "Department User" };
@@ -161,7 +162,7 @@ function route() {
   if (U.role === 'su') T = ["dash", "colleges", "depts", "users", "emails", "roles", "analytics", "reports", "settings"];
   else if (U.role === 'ca') T = ["dash", "depts", "users", "review", "analytics", "reports", "templates"];
   else if (U.role === 'dean') T = ["dash", "review", "events", "analytics", "reports"];
-  else if (U.role === 'hod') T = ["dash", "events", "monthly", "analytics", "reports", "templates"];
+  else if (U.role === 'hod') T = ["dash", "review", "events", "analytics", "reports"];
   else if (U.role === 'dept') T = ["dash", "events", "monthly", "reports", "templates"];
   else if (S.customRoles && S.customRoles[U.role]) {
     const perms = S.customRoles[U.role].perms || {};
@@ -392,11 +393,6 @@ function hodDash() {
       <h2 style="margin:0">HOD Dashboard · ${esc(d.name)}</h2>
       <p class="s" style="margin:4px 0 0">${esc(cn(d.college))} · Head of Department: <b>${esc(d.hod || hodUser.name)}</b></p>
     </div>
-    <div class="noprint" style="display:flex;gap:8px;flex-wrap:wrap">
-      <a href="#/events/new"><button>+ New Event Approval</button></a>
-      <a href="#/monthly"><button class="g">Monthly Reporting</button></a>
-      <button class="g" onclick="print()">Print Briefing</button>
-    </div>
   </div>
   ${mSel()}
 
@@ -418,8 +414,10 @@ function hodDash() {
       <span>Department Events</span>
     </div>
     <div class="card stat" style="border-top:3px solid ${pendingDean + pendingUniv > 0 ? 'var(--wa, #ed6c02)' : 'var(--ln)'}">
-      <b>${pendingDean + pendingUniv}</b>
-      <span>Approvals In Progress</span>
+      <a href="#/review" style="text-decoration:none;color:inherit;display:block">
+        <b>${pendingDean + pendingUniv}</b>
+        <span>Approvals In Progress →</span>
+      </a>
     </div>
     <div class="card stat" style="border-top:3px solid var(--ok, #2e7d32)">
       <b>${approved + completed}</b>
@@ -453,7 +451,7 @@ function hodDash() {
             <td>${statusBadge}</td>
             <td>${cnt}</td>
             <td class="text-right">
-              <a href="#/monthly/${hx[0]}"><button class="${s === "none" ? "sm" : "g sm"}">${s === "none" ? "Enter Data" : "View / Edit"}</button></a>
+              ${cnt > 0 ? `<a href="#/reports"><button class="g sm">View in Reports</button></a>` : `<span class="s">—</span>`}
             </td>
           </tr>`;
         }).join("")}
@@ -464,7 +462,10 @@ function hodDash() {
   <div class="card" style="margin-top:16px">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
       <h3 style="margin:0">Department Event Pipeline (${E.length})</h3>
-      <a href="#/events"><button class="g sm">All Department Events →</button></a>
+      <div style="display:flex;gap:8px">
+        <a href="#/review"><button class="sm">Approvals &amp; Verification →</button></a>
+        <a href="#/events"><button class="g sm">All Department Events →</button></a>
+      </div>
     </div>
     <p class="s" style="margin-top:0">Track approval progress, organize reports, and verification for your department.</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:13px">
@@ -1942,7 +1943,11 @@ function review() {
   if (!workflowOn()) return workflowUnavailable();
   const E = myEv();
   const P = E.filter(e => e.status === "PENDING"), D = E.filter(e => e.status === "DAPPROVED"), V = E.filter(e => e.status === "SUBMITTED");
-  const deanStage = isSU() || (U && U.role === "dean"), univStage = isGlobal(), verStage = canBackView() || hasPerm('events', 'verify');
+  const isHOD = U && U.role === "hod";
+  const hodStage = isHOD;
+  const deanStage = isSU() || (U && U.role === "dean") || hodStage;
+  const univStage = isGlobal();
+  const verStage = isHOD || canBackView() || hasPerm('events', 'verify') || (U && (U.role === "ca" || U.role === "dean"));
   const open = window.REVIEW_OPEN && E.find(e => e.id === window.REVIEW_OPEN && ["PENDING", "DAPPROVED", "SUBMITTED"].includes(e.status));
   if (!open) window.REVIEW_OPEN = null;
   const row = e => `<div class="card" style="cursor:pointer;padding:12px 16px" onclick="window.REVIEW_OPEN='${e.id}';review()"><code>${esc(e.num)}</code> ${badge(e.status)} <b style="margin-left:8px">${esc(e.title)}</b> <small style="float:right">${esc(dn(e.dept))} · ${e.date} — Open form →</small></div>`;
@@ -1950,7 +1955,7 @@ function review() {
   const card = (e, approveTo, approveLabel) => `<div class="card"><code>${esc(e.num)}</code> ${badge(e.status)}<h3 style="margin:6px 0 0">${esc(e.title)}</h3><small>${esc(cn(eCollege(e)))} · ${esc(dn(e.dept))} · ${e.date} · ${esc(e.venue || "venue not given")} · ${esc(e.type || "")}</small>${apForm(e)}<input id="n_${e.id}" placeholder="Remarks (required for return / reject)"><button class="k sm" onclick="dec('${e.id}','${approveTo}')">${approveLabel}</button><button class="g sm" onclick="dec('${e.id}','RETURNED')">Return</button><button class="r sm" onclick="dec('${e.id}','REJECTED')">Reject</button></div>`;
   if (open) {
     const vcard = e => `<div class="card"><code>${esc(e.num)}</code> ${badge(e.status)}<h3 style="margin:6px 0 0">${esc(e.title)}</h3><small>${esc(cn(eCollege(e)))} · approved for ${e.date}, ${esc(e.venue || "")}</small>${repBlock(e)}<input id="n_${e.id}" placeholder="Remarks (required for return)"><button class="k sm" onclick="dec('${e.id}','COMPLETED')">Verify</button><button class="g sm" onclick="dec('${e.id}','CRETURNED')">Return for correction</button></div>`;
-    const body = open.status === "PENDING" && deanStage ? card(open, "DAPPROVED", "Approve") : open.status === "DAPPROVED" && univStage ? card(open, "APPROVED", "Final Approve") : open.status === "SUBMITTED" && verStage ? vcard(open) : '';
+    const body = open.status === "PENDING" && deanStage ? card(open, "DAPPROVED", hodStage ? "Approve (HOD)" : "Approve") : open.status === "DAPPROVED" && univStage ? card(open, "APPROVED", "Final Approve") : open.status === "SUBMITTED" && verStage ? vcard(open) : '';
     if (body) { $("#app").innerHTML = `<h2>Approvals &amp; verification</h2>${back}${body}`; hydrate($("#app")); return }
     window.REVIEW_OPEN = null;
   }
@@ -1958,9 +1963,9 @@ function review() {
   const inSf = e => !sf || (sf === "Pending" ? ["PENDING", "DAPPROVED"].includes(e.status) : sf === "Approved" ? ["APPROVED", "SUBMITTED", "COMPLETED"].includes(e.status) : sf === "Rejected" ? ["REJECTED", "RETURNED", "CRETURNED"].includes(e.status) : true);
   const all = [...E].reverse().filter(e => inSf(e) && (!q || (e.num + " " + e.title + " " + (e.by || "") + " " + dn(e.dept) + " " + cn(eCollege(e))).toLowerCase().includes(q)));
   $("#app").innerHTML = `<h2>Approvals &amp; verification</h2><p class="s">Every decision is recorded against the Event ID. An event moves College Dean → University Admin → Event Organize → Verification.</p>` +
-    (deanStage ? `<h3>1. College Dean approvals (${P.length})</h3>${P.map(row).join("") || '<div class="card empty">Nothing waiting.</div>'}` : '') +
+    (hodStage ? `<h3>1. Department Event approvals (${P.length})</h3>${P.map(row).join("") || '<div class="card empty">No pending department approvals.</div>'}` : deanStage ? `<h3>1. College Dean approvals (${P.length})</h3>${P.map(row).join("") || '<div class="card empty">Nothing waiting.</div>'}` : '') +
     (univStage ? `<h3>2. University final approvals (${D.length})</h3>${D.map(row).join("") || '<div class="card empty">Nothing waiting.</div>'}` : '') +
-    (verStage ? `<h3>3. Completion verification (${V.length})</h3>${V.map(row).join("") || '<div class="card empty">Nothing waiting.</div>'}` : '') +
+    (verStage ? `<h3>${hodStage ? "2" : "3"}. Completion verification (${V.length})</h3>${V.map(row).join("") || '<div class="card empty">Nothing waiting for verification.</div>'}` : '') +
     `<h3>All requests</h3><div class="card"><div class="back-filters bv-filters"><div><label for="rv_q">Search</label><input id="rv_q" type="search" value="${esc(window.REVIEW_Q || "")}" placeholder="Event ID, title, requester, college, department"></div><div><label for="rv_sf">Status</label><select id="rv_sf"><option value="">All Requests</option>${["Pending", "Approved", "Rejected"].map(o => `<option ${sf === o ? "selected" : ""}>${o}</option>`).join("")}</select></div></div>${all.length ? `<div class="tw" style="margin-top:10px"><table><tr><th>Event ID</th><th>Event</th><th>Requester</th><th>College</th><th>Department</th><th>Submitted</th><th>Status</th><th></th></tr>${all.map(e => `<tr><td><code>${esc(e.num)}</code></td><td>${esc(e.title)}</td><td>${esc(e.by || "—")}</td><td>${esc(cn(eCollege(e)))}</td><td>${esc(dn(e.dept))}</td><td>${String(e.submittedAt || (e.hist && e.hist[0] && e.hist[0][0]) || "").slice(0, 10)}</td><td>${badge(e.status)}</td><td><a href="#/events/view/${e.id}"><button class="g sm">View</button></a>${["PENDING", "DAPPROVED", "SUBMITTED"].includes(e.status) ? ` <button class="sm" onclick="window.REVIEW_OPEN='${e.id}';review()">Open form</button>` : ""}</td></tr>`).join("")}</table></div>` : '<div class="empty">No requests match.</div>'}</div>`;
   $("#rv_q").oninput = () => { window.REVIEW_Q = $("#rv_q").value; review(); const el = $("#rv_q"); el.focus(); el.setSelectionRange(el.value.length, el.value.length) };
   $("#rv_sf").onchange = () => { window.REVIEW_SF = $("#rv_sf").value; review() };
