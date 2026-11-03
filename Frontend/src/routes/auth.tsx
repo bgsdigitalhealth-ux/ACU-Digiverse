@@ -105,6 +105,7 @@ function AuthPage() {
 
   return (
     <AuthShell>
+      <div className="login-accent-bar" aria-hidden="true" />
       <h2>{mode === "in" ? "Sign in" : mode === "up" ? "Create an account" : "Reset password"}</h2>
       <p className="sub">
         {mode === "in"
