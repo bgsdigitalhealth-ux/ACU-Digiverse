@@ -2672,7 +2672,6 @@ ${!e ? `
         <option value="part" ${isPart ? "selected" : ""}>PARTICIPATION APPROVAL FORM (Academic Participation)</option>
       </select>
     </div>
-    <span class="s" style="font-size:12px">${isPart ? "Approval ID format: IQAC/&lt;COLLEGE&gt;/[O|F]/&lt;SEQ&gt;/&lt;FY&gt;" : "Approval ID format: IQAC/&lt;COLLEGE&gt;/&lt;SEQ&gt;/&lt;FY&gt;"}</span>
   </div>
 </div>
 ` : ""}
