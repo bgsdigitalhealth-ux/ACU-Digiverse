@@ -66,7 +66,7 @@ export const generateReportArticle = createServerFn({ method: "POST" })
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: process.env["AI_MODEL"] || "gpt-4.1-mini",
+        model: process.env["AI_MODEL"] || process.env["OPENAI_MODEL"] || "gpt-4o",
         instructions: INSTRUCTIONS,
         input: [{ role: "user", content }],
         stream: true,

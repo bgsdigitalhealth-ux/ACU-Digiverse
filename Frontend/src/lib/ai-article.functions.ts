@@ -62,7 +62,7 @@ export const generateEventArticle = createServerFn({ method: "POST" })
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "gpt-4.1-mini",
+        model: process.env["AI_MODEL"] || process.env["OPENAI_MODEL"] || "gpt-4o",
         max_output_tokens: 5000,
         instructions: [
           "Write a detailed, publication-ready institutional event article using only the supplied source data.",
