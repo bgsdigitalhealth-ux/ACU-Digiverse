@@ -189,14 +189,29 @@ function isNoticeForMe(n) {
 
 const unreadNotices = () => (S.notifications || []).filter(n => isNoticeForMe(n) && !(n.read_by || []).includes(window.__ACU.uid)).length;
 const notifBell = () => { const c = unreadNotices(); return `<a class="acu-bell${c ? " has" : ""}" href="#/notifications" title="Approval notices"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${c ? `<span>${c}</span>` : ""}</a>` };
-if (!S.RN) S.RN = { su: "University Admin", ca: "College Admin", dean: "Dean / Principal", hod: "Head of Department (HOD)", dept: "Department User" };
-if (!S.RN.hod) S.RN.hod = "Head of Department (HOD)";
+if (!S.RN) S.RN = { su: "University Admin", ca: "College Admin", dean: "Dean / Principal", hod: "Head of Department (HOD)", dept: "Department User", iqac: "Central IQAC", dean_research: "Dean Research, ACU", doc_officer: "Institutional Documentation Officer" };
+S.RN.hod = "Head of Department (HOD)";
+S.RN.iqac = "Central IQAC";
+S.RN.dean_research = "Dean Research, ACU";
+S.RN.doc_officer = "Institutional Documentation Officer";
 const RN = S.RN;
 
+const isSU = () => U && U.role === 'su';
+const isIQAC = () => !!U && (U.role === 'iqac' || (S.RN && String(S.RN[U.role] || "").toLowerCase().includes("iqac")));
+const isDeanResearch = () => !!U && (U.role === 'dean_research' || (S.RN && String(S.RN[U.role] || "").toLowerCase().includes("dean research")));
+const isDocOfficer = () => !!U && (U.role === 'doc_officer' || (S.RN && (String(S.RN[U.role] || "").toLowerCase().includes("documentation officer") || String(S.RN[U.role] || "").toLowerCase().includes("institutional reporting"))));
+const isOfficerRole = r => {
+  if (!r) return false;
+  if (['iqac', 'dean_research', 'doc_officer'].includes(r)) return true;
+  const n = String((S.RN && S.RN[r]) || "").toLowerCase();
+  return n.includes("iqac") || n.includes("dean research") || n.includes("documentation officer") || n.includes("institutional reporting");
+};
+const isOfficer = () => isIQAC() || isDeanResearch() || isDocOfficer() || (U && isOfficerRole(U.role));
+
 const cn = id => (S.colleges.find(c => c.id === id) || {}).name || "—", dn = id => (S.depts.find(d => d.id === id) || {}).name || "—";
-const isGlobal = () => isSU() || (U && !['NONE', 'dept', 'hod', 'ca', 'dean'].includes(U.role) && !U.college && !U.dept);
-const myDepts = () => !U ? [] : isGlobal() ? S.depts : U.dept ? S.depts.filter(d => d.id === U.dept) : S.depts.filter(d => d.college === U.college);
-const myCols = () => !U ? [] : isGlobal() ? S.colleges : S.colleges.filter(c => c.id === U.college);
+const isGlobal = () => isSU() || (U && !['NONE', 'dept', 'hod', 'ca', 'dean', 'iqac', 'dean_research', 'doc_officer'].includes(U.role) && !U.college && !U.dept && !isOfficer());
+const myDepts = () => !U ? [] : (isGlobal() || isOfficer()) ? S.depts : U.dept ? S.depts.filter(d => d.id === U.dept) : S.depts.filter(d => d.college === U.college);
+const myCols = () => !U ? [] : (isGlobal() || isOfficer()) ? S.colleges : S.colleges.filter(c => c.id === U.college);
 const workflowOn = () => S.eventWorkflowEnabled === true;
 const workflowUnavailable = () => { $("#app").innerHTML = '<h2>Feature unavailable</h2><p class="s">This feature is currently turned off.</p>'; };
 const myEv = () => { if (!workflowOn()) return []; const ids = myDepts().map(d => d.id); return S.events.filter(e => ids.includes(e.dept)) };
@@ -215,11 +230,29 @@ if (!S.customRoles['ca']) S.customRoles['ca'] = { desc: 'College Administrator',
 if (!S.customRoles['dean']) S.customRoles['dean'] = { desc: 'Dean / Principal', perms: { college: [], dept: ['view', 'create', 'edit', 'delete'], users: [], events: ['view', 'create', 'edit', 'delete', 'verify', 'approve'], reports: ['view', 'export', 'submit'] } };
 if (!S.customRoles['hod']) S.customRoles['hod'] = { desc: 'Head of Department (HOD)', perms: { college: ['view'], dept: ['view'], users: ['view'], events: ['view', 'create', 'edit', 'verify', 'approve'], reports: ['view', 'export'] } };
 if (!S.customRoles['dept']) S.customRoles['dept'] = { desc: 'Department User', perms: { college: [], dept: [], users: [], events: ['view', 'create', 'edit', 'delete'], reports: ['view', 'export', 'submit'] } };
-const isSU = () => U && U.role === 'su';
-const canBackView = () => { const R = window.REALU; if (!R || !U || window.PORTAL) return false; if (R.role === 'su') return U.role === 'su' || (RN[U.role] === 'University Admin' && !U.college && !U.dept); return !['NONE', 'ca', 'dean', 'hod', 'dept'].includes(R.role) && !R.college && !R.dept; };
+S.customRoles['iqac'] = { desc: 'Central IQAC', perms: { college: [], dept: [], users: [], events: ['view', 'verify', 'approve'], reports: ['view'] } };
+S.customRoles['dean_research'] = { desc: 'Dean Research, ACU', perms: { college: [], dept: [], users: [], events: ['view', 'verify', 'approve'], reports: ['view'] } };
+S.customRoles['doc_officer'] = { desc: 'Institutional Documentation Officer', perms: { college: [], dept: [], users: [], events: ['view', 'verify'], reports: ['view'] } };
+
+const canBackView = () => {
+  const R = window.REALU;
+  if (!R || !U || window.PORTAL) return false;
+  if (isOfficer() || isOfficerRole(R.role) || isOfficerRole(U.role)) return false;
+  if (R.role === 'su') return U.role === 'su' || (RN[U.role] === 'University Admin' && !U.college && !U.dept);
+  return !['NONE', 'ca', 'dean', 'hod', 'dept'].includes(R.role) && !R.college && !R.dept;
+};
 const hasPerm = (mod, act) => {
   if (!U) return false;
   if (isSU()) return true;
+  if (isOfficer()) {
+    if (mod === 'events') {
+      if (act === 'view' || act === 'verify') return true;
+      if (act === 'approve' && (isIQAC() || isDeanResearch())) return true;
+      return false;
+    }
+    if (mod === 'reports') return act === 'view';
+    return false;
+  }
   if (S.customRoles && S.customRoles[U.role]) {
     const p = S.customRoles[U.role].perms && S.customRoles[U.role].perms[mod];
     if (!p) return false;
@@ -242,9 +275,15 @@ function route() {
   let T = [];
   if (U.role === 'su') {
     T = ["dash", "colleges", "depts", "users", "officers", "emails", "roles", "analytics", "reports", "settings"];
-  } else if (['iqac', 'dean_research', 'doc_officer'].includes(U.role)) {
-    // Strictly the 5 specified tools + dashboard for the three university authorities
-    T = ["dash", "review", "events", "analytics", "reports", "notifications"];
+    if (workflowOn()) T.push("notifications");
+  } else if (isOfficer()) {
+    // Strictly the dedicated dashboard + 4 core tools for the university authorities:
+    // 1. Approvals & verification (review)
+    // 2. Event reporting (events)
+    // 3. Reports (reports)
+    // 4. Notices (notifications)
+    T = ["dash", "review", "events", "reports"];
+    if (workflowOn()) T.push("notifications");
   } else {
     T.push("dash");
     const perms = (S.customRoles && S.customRoles[U.role] && S.customRoles[U.role].perms) || {};
@@ -257,12 +296,12 @@ function route() {
     if (perms.reports && perms.reports.includes("export")) T.push("analytics");
     if (perms.reports && perms.reports.includes("view")) T.push("reports");
     if (U.role === 'ca' || U.role === 'dept' || (perms.reports && perms.reports.includes("templates"))) T.push("templates");
+    if (workflowOn()) T.push("notifications");
     T = [...new Set(T)];
   }
 
-  T.push("notifications");
   if (!workflowOn()) T = T.filter(k => !["events", "review", "notifications"].includes(k));
-  if (canBackView()) { const ri = T.indexOf("reports"); T.splice(ri < 0 ? T.length : ri + 1, 0, "back"); }
+  if (canBackView() && !isOfficer()) { const ri = T.indexOf("reports"); T.splice(ri < 0 ? T.length : ri + 1, 0, "back"); }
   NAV = T;
   const L = {
     back: "BACK VIEW",
@@ -778,7 +817,6 @@ function iqacDash() {
       <a href="#/review"><button class="sm">Open Approvals &amp; Verification (${orgPending.length}) →</button></a>
       <a href="#/events"><button class="g sm">Event Reporting →</button></a>
       <a href="#/reports"><button class="g sm">Reports →</button></a>
-      <a href="#/analytics"><button class="g sm">Analytics &amp; Export →</button></a>
       <a href="#/notifications"><button class="g sm">Approval Notices →</button></a>
     </div>
   </div>
@@ -879,7 +917,6 @@ function deanResearchDash() {
       <a href="#/review"><button class="sm">Open Approvals &amp; Verification (${partPending.length}) →</button></a>
       <a href="#/events"><button class="g sm">Academic Participations →</button></a>
       <a href="#/reports"><button class="g sm">Reports →</button></a>
-      <a href="#/analytics"><button class="g sm">Research Analytics →</button></a>
       <a href="#/notifications"><button class="g sm">Approval Notices →</button></a>
     </div>
   </div>
@@ -982,7 +1019,6 @@ function docOfficerDash() {
       <a href="#/review"><button class="sm">Open Approvals &amp; Verification (${verPending.length}) →</button></a>
       <a href="#/events"><button class="g sm">Event Reporting →</button></a>
       <a href="#/reports"><button class="g sm">Institutional Reports →</button></a>
-      <a href="#/analytics"><button class="g sm">Analytics &amp; Export →</button></a>
       <a href="#/notifications"><button class="g sm">Approval Notices →</button></a>
     </div>
   </div>
@@ -1234,9 +1270,9 @@ window.removeOfficer = async function(id) {
 };
 
 function dash() {
-  if (U.role === "iqac") return iqacDash();
-  if (U.role === "dean_research") return deanResearchDash();
-  if (U.role === "doc_officer") return docOfficerDash();
+  if (isIQAC()) return iqacDash();
+  if (isDeanResearch()) return deanResearchDash();
+  if (isDocOfficer()) return docOfficerDash();
   if (U.role === "hod") return hodDash();
   if (U.role === "dept") return deptDash();
   const D = myDepts(), t = tally(D), E = myEv(), n = f => E.filter(f).length; const sub = U.college && S.subs[U.college + "|" + M];
@@ -2790,8 +2826,8 @@ function review() {
   const isHOD = U && U.role === "hod";
   const hodStage = isHOD;
   const deanStage = isSU() || (U && U.role === "dean") || hodStage;
-  const univStage = isGlobal();
-  const verStage = isHOD || canBackView() || hasPerm('events', 'verify') || (U && (U.role === "ca" || U.role === "dean"));
+  const univStage = isGlobal() || isIQAC() || isDeanResearch();
+  const verStage = isDocOfficer() || isIQAC() || isDeanResearch() || isSU() || isHOD || canBackView() || hasPerm('events', 'verify') || (U && (U.role === "ca" || U.role === "dean"));
   const open = window.REVIEW_OPEN && E.find(e => e.id === window.REVIEW_OPEN && ["PENDING", "DAPPROVED", "SUBMITTED"].includes(e.status));
   if (!open) window.REVIEW_OPEN = null;
   const row = e => `<div class="card" style="cursor:pointer;padding:12px 16px" onclick="window.REVIEW_OPEN='${e.id}';review()"><code>${esc(e.num)}</code> ${badge(e.status)} <b style="margin-left:8px">${esc(e.title)}</b> <small style="float:right">${esc(dn(e.dept))} · ${e.date} — Open form →</small></div>`;
@@ -2807,7 +2843,7 @@ function review() {
       body = card(open, "DAPPROVED", isPart ? "Recommend to Dean Research, ACU" : "Recommend to Central IQAC");
     } else if (open.status === "DAPPROVED" && univStage) {
       const isPart = isPartEvent(open);
-      const canUnivApprove = isSUUser || (isPart && isDeanResearchUser) || (!isPart && isIQACUser) || (isGlobal() && !['ca', 'dean', 'hod', 'dept', 'iqac', 'dean_research', 'doc_officer'].includes(U.role));
+      const canUnivApprove = isSU() || (isPart ? isDeanResearch() : isIQAC()) || (isGlobal() && !['ca', 'dean', 'hod', 'dept', 'iqac', 'dean_research', 'doc_officer'].includes(U.role) && !isOfficer());
       if (canUnivApprove) {
         body = card(open, "APPROVED", isPart ? "Authorise Participation (Dean Research, ACU)" : "Authorise Event (Central IQAC)");
       }
