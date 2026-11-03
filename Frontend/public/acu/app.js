@@ -136,9 +136,10 @@ const cyclePeriod = () => S.reportCycle === 'yearly' ? 'year' : S.reportCycle ==
 if (!S.customRoles) S.customRoles = {};
 if (!S.customRoles['ca']) S.customRoles['ca'] = { desc: 'College Administrator', perms: { college: [], dept: ['view', 'create', 'edit', 'delete'], users: ['view', 'create', 'delete'], events: ['view', 'create', 'edit', 'delete', 'verify', 'approve'], reports: ['view', 'export', 'submit'] } };
 if (!S.customRoles['dean']) S.customRoles['dean'] = { desc: 'Dean / Principal', perms: { college: [], dept: ['view', 'create', 'edit', 'delete'], users: [], events: ['view', 'create', 'edit', 'delete', 'verify', 'approve'], reports: ['view', 'export', 'submit'] } };
+if (!S.customRoles['hod']) S.customRoles['hod'] = { desc: 'Head of Department (HOD)', perms: { college: ['view'], dept: ['view'], users: ['view'], events: ['view', 'create', 'edit', 'verify', 'approve'], reports: ['view', 'export'] } };
 if (!S.customRoles['dept']) S.customRoles['dept'] = { desc: 'Department User', perms: { college: [], dept: [], users: [], events: ['view', 'create', 'edit', 'delete'], reports: ['view', 'export', 'submit'] } };
 const isSU = () => U && U.role === 'su';
-const canBackView = () => { const R = window.REALU; if (!R || !U || window.PORTAL) return false; if (R.role === 'su') return U.role === 'su' || (RN[U.role] === 'University Admin' && !U.college && !U.dept); return !['NONE', 'ca', 'dean', 'dept'].includes(R.role) && !R.college && !R.dept; };
+const canBackView = () => { const R = window.REALU; if (!R || !U || window.PORTAL) return false; if (R.role === 'su') return U.role === 'su' || (RN[U.role] === 'University Admin' && !U.college && !U.dept); return !['NONE', 'ca', 'dean', 'hod', 'dept'].includes(R.role) && !R.college && !R.dept; };
 const hasPerm = (mod, act) => {
   if (!U) return false;
   if (isSU()) return true;
@@ -918,7 +919,7 @@ function roles(a, rId) {
             <tr>
               <th>Name</th>
               <th>College</th>
-              ${rId === "dept" ? "<th>Department</th>" : ""}
+              ${(rId === "dept" || rId === "hod") ? "<th>Department</th>" : ""}
               <th>Action</th>
             </tr>
             ${roleUsers.length ? roleUsers.map(u => `
@@ -932,7 +933,7 @@ function roles(a, rId) {
                     </select>
                   `}
                 </td>
-                ${rId === "dept" ? `
+                ${(rId === "dept" || rId === "hod") ? `
                   <td>
                     <select onchange="window.updUDep('${u.id}', this.value)">
                       <option value="">Not assigned</option>
@@ -1216,14 +1217,15 @@ function roles(a, rId) {
   }
 
   const rolesList = [
-    { id: "su", name: RN.su },
-    { id: "ca", name: RN.ca },
-    { id: "dean", name: RN.dean },
-    { id: "dept", name: RN.dept }
+    { id: "su", name: RN.su || "University Admin" },
+    { id: "ca", name: RN.ca || "College Admin" },
+    { id: "dean", name: RN.dean || "Dean / Principal" },
+    { id: "hod", name: RN.hod || "Head of Department (HOD)" },
+    { id: "dept", name: RN.dept || "Department User" }
   ];
   if (S.customRoles) {
     Object.keys(S.customRoles).forEach(k => {
-      if (!["su", "ca", "dean", "dept"].includes(k)) {
+      if (!["su", "ca", "dean", "hod", "dept"].includes(k)) {
         rolesList.push({ id: k, name: RN[k] || "Custom Role" });
       }
     });
@@ -1528,7 +1530,7 @@ function users(action, id) {
   <h2>Users</h2>
   <p class="s">${gl ? "Create college admins, deans and other university admins." : "Create one login per department."}</p>
   
-  ${canCre ? `<div class="card" style="margin-bottom:24px"><div class="row"><div><label>Full name *</label><input id="u_n"></div><div><label>Role *</label><select id="u_r">${gl ? `<option value="ca">${esc(RN.ca)}</option><option value="dean">${esc(RN.dean)}</option>` : ``}<option value="dept">${esc(RN.dept)}</option>${Object.keys(S.customRoles || {}).filter(k => !['ca', 'dean', 'dept'].includes(k)).map(k => `<option value="${k}">${esc(RN[k] || k)}</option>`).join("")}</select></div>
+  ${canCre ? `<div class="card" style="margin-bottom:24px"><div class="row"><div><label>Full name *</label><input id="u_n"></div><div><label>Role *</label><select id="u_r">${gl ? `<option value="ca">${esc(RN.ca)}</option><option value="dean">${esc(RN.dean)}</option>` : ``}<option value="hod">${esc(RN.hod || "Head of Department (HOD)")}</option><option value="dept">${esc(RN.dept)}</option>${Object.keys(S.customRoles || {}).filter(k => !['ca', 'dean', 'hod', 'dept'].includes(k)).map(k => `<option value="${k}">${esc(RN[k] || k)}</option>`).join("")}</select></div>
 <div id="u_cw" ${gl ? "" : "hidden"}><label>College</label><select id="u_c"><option value="">Select College</option>${S.colleges.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select></div><div id="u_dw" hidden><label>Department</label><select id="u_d"><option value="">Select Department</option></select></div><div><label>Email ID *</label><input id="u_p" type="email" placeholder="name@acu.ac.in"></div></div><button id="u_g">Create user</button></div>` : ''}
   
   <div class="card" style="padding:0; overflow-x:auto;">
@@ -1551,7 +1553,7 @@ function users(action, id) {
     const r = $("#u_r") ? $("#u_r").value : null;
     const c = gl ? ($("#u_c") ? $("#u_c").value : "") : U.college;
     if ($("#u_cw")) $("#u_cw").hidden = !(gl && r !== "su");
-    if ($("#u_dw")) $("#u_dw").hidden = (r !== "dept" && r !== "ca");
+    if ($("#u_dw")) $("#u_dw").hidden = (r !== "dept" && r !== "hod");
     if ($("#u_d")) {
       if (!c && gl && r !== "su") {
         $("#u_d").innerHTML = `<option value="">Select College first</option>`;
