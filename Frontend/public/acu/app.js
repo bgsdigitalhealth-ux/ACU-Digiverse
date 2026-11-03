@@ -65,7 +65,7 @@ function evOpen(id, targetHk) {
   if (!workflowOn()) return workflowUnavailable();
   const D = myDepts()[0], e = S.events.find(x => x.id === id);
   const hk = targetHk || (location.hash && location.hash.includes("/part") ? "part" : "evo");
-  const headLabel = hk === "part" ? "Participation Details" : "Event Organize";
+  const headLabel = hk === "part" ? "Academic Participation" : "Event Organize";
   if (!D || !e || e.dept !== D.id || !["APPROVED", "CRETURNED", "SUBMITTED", "COMPLETED"].includes(e.status))
     return alert(headLabel + " is available only for an approved Approval ID of your department.");
   EVU = id;
@@ -85,7 +85,7 @@ let DD = today(), FS = {}, FO = {}, EVU = null, EVCTX = null;
 let U = S.users.find(u => u.id === window.__ACU.uid) || null;
 const LV = ["International", "National", "State", "Regional", "University", "Institutional"], MD = ["Online", "Offline", "Hybrid"], PS = ["Filed", "Published", "Granted"], ET = ["Conference", "Seminar", "Symposium", "FDP", "Workshop", "CME", "Webinar", "Guest Lecture", "Awareness Programme", "Cultural Event", "Sports", "Other"], LV2 = ["College", "University", "District", "State", "National", "International"], EGL = ["Each constituent college / institution shall submit one completed report for every academic event organized.", "The report should be submitted with the prescribed supporting documents/enclosures.", "Photographs should be clear, relevant and preferably include the dais, resource persons and participants.", "The information provided should be accurate, complete and supported by institutional records.", "Where applicable, the report may be used for IQAC, AQAR, accreditation, ranking, annual report and other institutional documentation."];
 const defaultH = [
-  ["part", "Participation Details", ["Particulars|t", "Level of Event|lv", "Title|t|*", "Attendee (Student/Staff)|t", "Name of the Attendee|t|*", "Purpose|t", "ID|t", "Designation|t", "Date|d|*", "Name of the Host Institution|t", "Mode|md", "Financial Assistance|t", "Amount in Rupees|n", "Email Id|t", "Contact No|t", "Certificate|fu", "Brochure|fu", "Report|fu"]],
+  ["part", "Academic Participation", ["Particulars|t", "Level of Event|lv", "Title|t|*", "Attendee (Student/Staff)|t", "Name of the Attendee|t|*", "Purpose|t", "ID|t", "Designation|t", "Date|d|*", "Name of the Host Institution|t", "Mode|md", "Financial Assistance|t", "Amount in Rupees|n", "Email Id|t", "Contact No|t", "Certificate|fu", "Brochure|fu", "Report|fu"]],
   ["evo", "Events Organized", ["Name of the College / Institution|au", "Name of the Organizing Unit|dp|*", "Type of Event|ty|*", "Title of the Event|t|*", "Level of the Event|l2|*", "Mode of the Event|md|*", "Date(s) and Duration|t|*", "Time|t", "Venue / Platform / Location|t|*", "Theme / Area|t", "Target Audience|t", "Number of Participants|n|*", "Accreditation / Recognition, if any|t", "Financial Assistance / Sponsorship, if any|t", "Chief Guest / Resource Persons / Experts|ta|*", "Objectives of the Event|ta", "Brief Proceedings / Event Summary|ta|*", "Key Outcomes / Learning Outcomes|ta", "Feedback Analysis|ta", "Follow-up / Action Taken, if any|ta", "Attachments / Enclosures|sec", "Event brochure / invitation|fu|*", "Attendance sheet|fu|*", "Feedback summary|fu|*", "Selected photographs, 4 to 6|fp|*", "Certificates / other supporting documents, if applicable|fu", "Certification by the Head of the Institution / Principal|sec", "Name of Principal / Head|t|*", "Signature with Seal (upload signed copy)|fu", "Date of Submission|dn|*", "Contact Email / Phone|t|*"], [2, 3, 4, 6], EGL, "Report on Conference / Seminar / Workshop / FDP"],
   ["pat", "Patents", ["Academic Year|t", "Patent Application No.|t|*", "Status of Patent|ps", "Inventor/s Name|t|*", "Title of the Patent|t|*", "Applicant/s Name|t", "Patent Filed Date|d", "Published/Granted Date|d", "Published/Granted No.|t", "Assignee/s Name (Institute Affiliation/s at the time of Application)|t", "Evidence|fu"]],
   ["pub", "Research Publications", ["Faculty Name|t|*", "Title of the Paper|t|*", "Name of the Author/s|t", "Name of the Journal|t|*", "Year of Publication|n", "ISBN/ISSN Number|t", "Impact Factor|t", "Nature of Journal|t", "Quartile|t", "Full Article|fu"]],
@@ -99,7 +99,7 @@ const defaultH = [
 // Staff-only wording: rename saved headings/fields and carry existing answers over to the new field names.
 const STAFF_RENAMES = { spo: { "Faculty/Student Name": "Faculty Name" }, npt: { "ID / Employee ID": "Employee ID" } };
 if (!S.headings) S.headings = defaultH;
-else S.headings.forEach(h => { if (h[0] === "npt" && h[1] === "NPTEL (Students & Staff)") h[1] = "NPTEL (Staff)"; const rn = STAFF_RENAMES[h[0]] || {}; h[2] = h[2].map(f => { f = f.replace(/ Link\|l/g, "|fu").replace(/Link\|l/g, "|fu"); const [l, ...rest] = f.split("|"); return rn[l] ? [rn[l], ...rest].join("|") : f }) });
+else S.headings.forEach(h => { if (h[0] === "part") h[1] = "Academic Participation"; if (h[0] === "npt" && h[1] === "NPTEL (Students & Staff)") h[1] = "NPTEL (Staff)"; const rn = STAFF_RENAMES[h[0]] || {}; h[2] = h[2].map(f => { f = f.replace(/ Link\|l/g, "|fu").replace(/Link\|l/g, "|fu"); const [l, ...rest] = f.split("|"); return rn[l] ? [rn[l], ...rest].join("|") : f }) });
 (S.recs || []).forEach(r => { const rn = STAFF_RENAMES[r.head]; if (rn && r.data) for (const [o, n] of Object.entries(rn)) if (o in r.data) { if (!(n in r.data)) r.data[n] = r.data[o]; delete r.data[o] } });
 let H = S.headings;
 const ST = { PENDING: ["Pending Dean/Principal Approval", "wa"], DAPPROVED: ["Dean/Principal Approved · Pending University Approval", "wa"], RETURNED: ["Returned for Correction", "er"], REJECTED: ["Rejected", "er"], APPROVED: ["Finally Approved", "ok"], SUBMITTED: ["Verification pending", "wa"], CRETURNED: ["Event Organize returned", "er"], COMPLETED: ["Completed", "ok"] };
@@ -516,7 +516,7 @@ function hodDash() {
       <div class="tw">
         <table>
           <tr><th>Category</th><th>Records (${M})</th><th>All-Time</th></tr>
-          <tr><td>Participation in Events</td><td>${deptRecs.filter(r => r.head === "part").length}</td><td>${deptAllRecs.filter(r => r.head === "part").length}</td></tr>
+          <tr><td>Academic Participation</td><td>${deptRecs.filter(r => r.head === "part").length}</td><td>${deptAllRecs.filter(r => r.head === "part").length}</td></tr>
           <tr><td>Events Organized</td><td>${deptRecs.filter(r => r.head === "evo").length}</td><td>${deptAllRecs.filter(r => r.head === "evo").length}</td></tr>
           <tr><td>Research Publications</td><td>${deptRecs.filter(r => r.head === "pub").length}</td><td>${pubRecs.length}</td></tr>
           <tr><td>Patents Filed / Granted</td><td>${deptRecs.filter(r => r.head === "pat").length}</td><td>${patRecs.length}</td></tr>
@@ -1759,14 +1759,14 @@ const gateList = (hk = "evo") => {
 };
 const gateHtml = (hk = "evo") => {
   const isPart = hk === "part";
-  const title = isPart ? "Participation Details is locked" : "Event Organize is locked";
+  const title = isPart ? "Academic Participation is locked" : "Event Organize is locked";
   const desc = isPart
-    ? "<b>No approval → no Participation Details.</b> Enter the Approval ID of an approved event. The title, dates, mode, institution, attendee and financial details are taken from the approval automatically."
+    ? "<b>No approval → no Academic Participation.</b> Enter the Approval ID of an approved event. The title, dates, mode, institution, attendee and financial details are taken from the approval automatically."
     : "<b>No approval → no Event Organize.</b> Enter the Approval ID of an approved event. The college, department, faculty and event are taken from the approval automatically.";
   const col = myCols()[0] || {};
   const exCode = (col.code || "SACCP").toUpperCase();
   const exId = isPart ? `IQAC/${exCode}/O/01/${getFinYear()}` : `IQAC/${exCode}/01/${getFinYear()}`;
-  return `<div class="card"><h3>${title}</h3><p class="lg">${desc}</p><ol class="lg" style="margin:0 0 12px 18px"><li>Go to <b>Event reporting → + New event approval</b> (or click below), fill the <b>${isPart ? "Participation approval form" : "Event approval form"}</b> and submit it.</li><li>Once it has both approvals (College Dean &amp; University Admin), copy its <b>Approval ID</b> (e.g. <code>${exId}</code>).</li><li>Come back here, paste that Approval ID below, and ${isPart ? "Participation Details" : "Events Organized"} unlocks.</li></ol><div style="margin:0 0 14px"><a href="${isPart ? "#/events/new/part" : "#/events/new"}"><button>${isPart ? "Fill Participation Approval Form" : "Fill Event Approval Form"}</button></a></div>${gateList(hk)}<div style="max-width:420px"><label>Approval ID</label><input id="g_id" placeholder="e.g. ${exId}"></div><button id="g_go">Verify Approval ID</button><div id="g_out" style="margin-top:10px"></div></div>`;
+  return `<div class="card"><h3>${title}</h3><p class="lg">${desc}</p><ol class="lg" style="margin:0 0 12px 18px"><li>Go to <b>Event reporting → + New event approval</b> (or click below), fill the <b>${isPart ? "Participation approval form" : "Event approval form"}</b> and submit it.</li><li>Once it has both approvals (College Dean &amp; University Admin), copy its <b>Approval ID</b> (e.g. <code>${exId}</code>).</li><li>Come back here, paste that Approval ID below, and ${isPart ? "Academic Participation" : "Events Organized"} unlocks.</li></ol><div style="margin:0 0 14px"><a href="${isPart ? "#/events/new/part" : "#/events/new"}"><button>${isPart ? "Fill Participation Approval Form" : "Fill Event Approval Form"}</button></a></div>${gateList(hk)}<div style="max-width:420px"><label>Approval ID</label><input id="g_id" placeholder="e.g. ${exId}"></div><button id="g_go">Verify Approval ID</button><div id="g_out" style="margin-top:10px"></div></div>`;
 };
 const evBanner = e => `<div class="note"><b>Approval ID verified:</b> <code>${esc(e.num)}</code> ${badge(e.status)}<br>College: ${esc(cn((S.depts.find(d => d.id === e.dept) || {}).college))} · Department: ${esc(dn(e.dept))} · Faculty: ${esc(e.faculty || "—")}${e.conv ? " · Convener: " + esc(e.conv) : ""}<br>Event: ${esc(e.title)} · Approved dates: ${e.date}${e.dateTo ? " to " + e.dateTo : ""}<br>Fields marked "from approval" are locked. Reporting ${cyclePeriod()}: ${dateToM(e.date)}.${e.status === "CRETURNED" && e.remark ? `<br><b>Returned:</b> ${esc(e.remark)}` : ""}<br><button class="g sm" id="g_x">Use a different Approval ID</button></div>`;
 function monthly(hk, rid) {
@@ -1782,7 +1782,7 @@ function monthly(hk, rid) {
   }
   $("#app").innerHTML = `<p><a href="#/monthly">← All headings</a></p><h2>${h[1]} · ${M}</h2><p class="s">${esc(D.name)}</p>
 ${z ? `<div class="card"><span class="b wa">Zero submitted</span> ${esc(z.remarks || "")}<br><button class="g sm" id="uz">Withdraw zero to enter data</button></div>` : ""}
-${z ? "" : EVG && !fe ? gateHtml(hk) : `<div class="card"><h3>${ed ? "Edit record" : EVG ? (hk === "part" ? "Participation Details report" : "Event Organize report") : "Activity done: add a record"}</h3>${EVG ? evBanner(fe) : ""}${h[5] ? `<p class="lg">${h[5]}</p>` : ""}${h[4] ? `<div class="note"><b>Submission guidelines</b><ul style="margin:6px 0 0;padding-left:18px">${h[4].map(g => `<li>${esc(g)}</li>`).join("")}</ul></div>` : ""}<div class="row">${(EVCTX = fe ? evAuto(fe, hk) : null, "")}${F.map((s, i) => fld(s, i, ed && ed.data[s.split("|")[0]])).join("")}${(EVCTX = null, "")}</div><button id="sv">${ed ? "Save changes" : "Save record"}</button>${ed ? ` <a href="#/monthly/${hk}"><button class="g">Cancel</button></a>` : ""}${hk === "evo" ? aiBox() : ""}</div>`}
+${z ? "" : EVG && !fe ? gateHtml(hk) : `<div class="card"><h3>${ed ? "Edit record" : EVG ? (hk === "part" ? "Academic Participation report" : "Event Organize report") : "Activity done: add a record"}</h3>${EVG ? evBanner(fe) : ""}${h[5] ? `<p class="lg">${h[5]}</p>` : ""}${h[4] ? `<div class="note"><b>Submission guidelines</b><ul style="margin:6px 0 0;padding-left:18px">${h[4].map(g => `<li>${esc(g)}</li>`).join("")}</ul></div>` : ""}<div class="row">${(EVCTX = fe ? evAuto(fe, hk) : null, "")}${F.map((s, i) => fld(s, i, ed && ed.data[s.split("|")[0]])).join("")}${(EVCTX = null, "")}</div><button id="sv">${ed ? "Save changes" : "Save record"}</button>${ed ? ` <a href="#/monthly/${hk}"><button class="g">Cancel</button></a>` : ""}${hk === "evo" ? aiBox() : ""}</div>`}
 ${rs.length ? `<div class="card"><h3>Records this ${cyclePeriod()} (${rs.length})</h3><div class="tw"><table><tr>${EVG ? "<th>Approval ID</th>" : ""}${CI.map(s => `<th>${esc(s.split("|")[0])}</th>`).join("")}<th></th></tr>${rs.map(r => `<tr>${EVG ? `<td><code>${esc(r.evNum || "No Approval ID (legacy)")}</code></td>` : ""}${CI.map(s => `<td>${esc(r.data[s.split("|")[0]] || "—")}</td>`).join("")}<td><a href="#/monthly/${hk}/v_${r.id}"><button class="g sm">View / print</button></a>${EVG && r.article ? `<button class="g sm" onclick="aiStored('${r.id}')">View article / PDF</button>` : ""}${EVG && r.evId ? (["CRETURNED", "SUBMITTED"].includes((S.events.find(x => x.id === r.evId) || {}).status) ? `<button class="g sm" onclick="evOpen('${r.evId}')">Edit and resubmit</button>` : "") : `${EVG ? "" : `<a href="#/monthly/${hk}/${r.id}"><button class="g sm">Edit</button></a>`}<button class="r sm" onclick="delRec('${r.id}','${hk}')">Delete</button>`}</td></tr>`).join("")}</table></div></div>` : ""}
 ${!rs.length && !z ? `<div class="card"><h3>No activity this ${cyclePeriod()}</h3><label>Remarks (optional)</label><input id="zr" placeholder="e.g. no activity during this ${cyclePeriod()}"><button class="g" id="sz">Submit zero (0)</button></div>` : ""}`;
   if ($("#ai_go")) { AIART = ed && ed.article || null; AIHEAD = hk; AIIMAGES = []; AIOWNER = window.__ACU.uid; $("#ai_go").onclick = () => aiRun(F, h, D); }
@@ -1836,7 +1836,7 @@ ${!rs.length && !z ? `<div class="card"><h3>No activity this ${cyclePeriod()}</h
     if (EVG) {
       const e2 = S.events.find(x => x.id === (fe && fe.id));
       if (!e2 || e2.dept !== D.id || !["APPROVED", "CRETURNED", "SUBMITTED", "COMPLETED"].includes(e2.status)) {
-        alert("This Approval ID is no longer valid for " + (hk === "part" ? "Participation Details." : "Event Organize."));
+        alert("This Approval ID is no longer valid for " + (hk === "part" ? "Academic Participation." : "Event Organize."));
         return false;
       }
     }
@@ -1858,7 +1858,7 @@ ${!rs.length && !z ? `<div class="card"><h3>No activity this ${cyclePeriod()}</h
       EVU = null;
     } else if (hk === "part") {
       fe.partRecId = rec.id;
-      fe.hist.push([new Date().toISOString(), "Participation Details report " + (ed ? "resubmitted" : "submitted") + " by " + U.name]);
+      fe.hist.push([new Date().toISOString(), "Academic Participation report " + (ed ? "resubmitted" : "submitted") + " by " + U.name]);
       EVU = null;
     }
     await save();
@@ -1997,7 +1997,7 @@ function events(a, id) {
     }
     // Dynamic sequential IQAC numbering:
     // Event Organize: IQAC/<COLLEGE>/<SEQ>/<FY>
-    // Participation Details: IQAC/<COLLEGE>/O/<SEQ>/<FY> (Organizer) or IQAC/<COLLEGE>/F/<SEQ>/<FY> (Faculty)
+    // Academic Participation: IQAC/<COLLEGE>/O/<SEQ>/<FY> (Organizer) or IQAC/<COLLEGE>/F/<SEQ>/<FY> (Faculty)
     const getExpectedNum = (confId, partCode) => {
       const conf = (confId && myCfs.find(x => x.id === confId)) || myCfs[0] || {};
       const p1 = (conf.p1 || "IQAC").trim();
@@ -2032,7 +2032,7 @@ ${!e ? `
       <label for="a_form_type" style="font-weight:700;font-size:14px;color:var(--tx);margin:0 10px 0 0">Approval Form Type:</label>
       <select id="a_form_type" style="font-weight:600;padding:6px 12px;border:1px solid var(--ln);border-radius:6px;background:var(--bg);cursor:pointer">
         <option value="evo" ${!isPart ? "selected" : ""}>EVENT APPROVAL FORM (Event Organization)</option>
-        <option value="part" ${isPart ? "selected" : ""}>PARTICIPATION APPROVAL FORM (Participation Details)</option>
+        <option value="part" ${isPart ? "selected" : ""}>PARTICIPATION APPROVAL FORM (Academic Participation)</option>
       </select>
     </div>
     <span class="s" style="font-size:12px">${isPart ? "Approval ID format: IQAC/&lt;COLLEGE&gt;/[O|F]/&lt;SEQ&gt;/&lt;FY&gt;" : "Approval ID format: IQAC/&lt;COLLEGE&gt;/&lt;SEQ&gt;/&lt;FY&gt;"}</span>
@@ -2096,7 +2096,7 @@ ${approvalPaper(e || {}, { editable: true, isNew: !e, isPart, partRole: e?.partT
 ${apForm(e)}<div class="approval-actions noprint"><button class="g" onclick="printApprovalForm()">Print approval form</button></div>
 ${articlePreview(e)}
 <div class="card"><h3>Event Organize report</h3>${orgRec(e) || c ? repBlock(e) : '<div class="empty">Not filed yet. It unlocks only after Dean / Principal approval.</div>'}</div>
-<div class="card"><h3>Participation Details report</h3>${(() => { const pr = S.recs.find(r => (r.evId === e.id || r.id === e.partRecId) && r.head === "part"); return pr ? repHtml(H.find(h => h[0] === "part"), pr) : '<div class="empty">Not filed yet.</div>'; })()}</div>
+<div class="card"><h3>Academic Participation report</h3>${(() => { const pr = S.recs.find(r => (r.evId === e.id || r.id === e.partRecId) && r.head === "part"); return pr ? repHtml(H.find(h => h[0] === "part"), pr) : '<div class="empty">Not filed yet.</div>'; })()}</div>
 <div class="card"><h3>Approval history</h3>${(e.approvals || []).length ? `<div class="tw"><table><tr><th>Stage</th><th>Decision</th><th>Approver</th><th>Remarks</th><th>When</th></tr>${e.approvals.map(a => `<tr><td>${esc(a.stage === "dean" ? "College Dean" : a.stage === "university" ? "University Admin" : "Verification")}</td><td>${esc((ST[a.decision] || [a.decision])[0])}</td><td>${esc(a.byName || "—")}</td><td>${esc(a.remarks || "—")}</td><td>${String(a.at || "").slice(0, 16).replace("T", " ")}</td></tr>`).join("")}</table></div>` : '<div class="empty">No approval decision recorded yet.</div>'}</div>
 <div class="card"><h3>Workflow &amp; audit trail</h3><div class="tw"><table><tr><th>When</th><th>Action</th></tr>${e.hist.map(h => `<tr><td>${h[0].slice(0, 16).replace("T", " ")}</td><td>${esc(h[1])}</td></tr>`).join("")}</table></div></div>`; hydrate($("#app")); return
   }
@@ -2104,7 +2104,7 @@ ${articlePreview(e)}
   // Roles whose menu has no "Event Reporting" entry (Super Admin, College Admin, University Admin)
   // still open this page from the dashboard's "Recent events" card, but as a read-only full list.
   const ro = !NAV.includes("events"), canFile = !ro && isD, gl = isGlobal();
-  $("#app").innerHTML = `${ro ? `<p><a href="#/dash">← Dashboard</a></p>` : ""}<h2>${ro ? "All events" : "Event reporting"}</h2><p class="s">College Dean approval → University final approval → Event Organize (needs the Approval ID) → Verification, all under one Event ID.${E.length ? ` Showing all ${E.length} event${E.length === 1 ? "" : "s"} in your scope.` : ""}</p>${canFile ? `<a href="#/events/new"><button>+ New event approval</button></a>` : ""}<div class="card" style="margin-top:12px">${E.length ? `<div class="tw"><table><tr>${gl ? "<th>College</th>" : ""}<th>Event ID</th><th>Event</th><th>Department</th><th>Date</th><th>Status</th><th></th></tr>${[...E].reverse().map(e => `<tr>${gl ? `<td>${esc(cn(eCollege(e)))}</td>` : ""}<td><a href="#/events/view/${e.id}"><code>${esc(e.num)}</code></a></td><td>${esc(e.title)}</td><td>${esc(dn(e.dept))}</td><td>${e.date}</td><td>${badge(e.status)}${e.remark && ["RETURNED", "REJECTED", "CRETURNED"].includes(e.status) ? `<br><small>${esc(e.remark)}</small>` : ""}</td><td>${canFile && (e.status === "APPROVED" || e.status === "CRETURNED") ? `<div style="display:flex;gap:4px;flex-wrap:wrap"><button class="sm" onclick="evOpen('${e.id}','evo')">Open Event Organize</button><button class="sm g" onclick="evOpen('${e.id}','part')">Open Participation Details</button></div>` : canFile && e.status === "RETURNED" ? `<a href="#/events/edit/${e.id}"><button class="sm">Correct</button></a>` : ""}</td></tr>`).join("")}</table></div>` : '<div class="empty">No events yet.</div>'}</div>`
+  $("#app").innerHTML = `${ro ? `<p><a href="#/dash">← Dashboard</a></p>` : ""}<h2>${ro ? "All events" : "Event reporting"}</h2><p class="s">College Dean approval → University final approval → Event Organize (needs the Approval ID) → Verification, all under one Event ID.${E.length ? ` Showing all ${E.length} event${E.length === 1 ? "" : "s"} in your scope.` : ""}</p>${canFile ? `<a href="#/events/new"><button>+ New event approval</button></a>` : ""}<div class="card" style="margin-top:12px">${E.length ? `<div class="tw"><table><tr>${gl ? "<th>College</th>" : ""}<th>Event ID</th><th>Event</th><th>Department</th><th>Date</th><th>Status</th><th></th></tr>${[...E].reverse().map(e => `<tr>${gl ? `<td>${esc(cn(eCollege(e)))}</td>` : ""}<td><a href="#/events/view/${e.id}"><code>${esc(e.num)}</code></a></td><td>${esc(e.title)}</td><td>${esc(dn(e.dept))}</td><td>${e.date}</td><td>${badge(e.status)}${e.remark && ["RETURNED", "REJECTED", "CRETURNED"].includes(e.status) ? `<br><small>${esc(e.remark)}</small>` : ""}</td><td>${canFile && (e.status === "APPROVED" || e.status === "CRETURNED") ? `<div style="display:flex;gap:4px;flex-wrap:wrap"><button class="sm" onclick="evOpen('${e.id}','evo')">Open Event Organize</button><button class="sm g" onclick="evOpen('${e.id}','part')">Open Academic Participation</button></div>` : canFile && e.status === "RETURNED" ? `<a href="#/events/edit/${e.id}"><button class="sm">Correct</button></a>` : ""}</td></tr>`).join("")}</table></div>` : '<div class="empty">No events yet.</div>'}</div>`
 }
 function dRows() {
   const E = myEv().filter(e => e.date === DD), ap = ["APPROVED", "SUBMITTED", "CRETURNED", "COMPLETED"];
