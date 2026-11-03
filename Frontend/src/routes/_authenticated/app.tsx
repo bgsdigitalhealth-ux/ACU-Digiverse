@@ -38,7 +38,7 @@ function AcuApp() {
         setImportable(!!global && !!localStorage.getItem("acu_v2") && !localStorage.getItem("acu_v2_imported"));
         if (!document.querySelector("script[data-acu-app]")) {
           const s = document.createElement("script");
-          s.src = "/acu/app.js?v=20261103-academic-participation";
+          s.src = "/acu/app.js?v=20261103-dashboards-expansion";
           s.async = false;
           s.setAttribute("data-acu-app", "1");
           document.body.appendChild(s);

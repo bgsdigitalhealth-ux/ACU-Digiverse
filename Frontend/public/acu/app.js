@@ -109,13 +109,55 @@ const eCollege = e => (S.depts.find(d => d.id === (e && e.dept)) || {}).college 
 const approvalStage = s => s === "PENDING" ? "dean" : s === "DAPPROVED" ? "university" : null;
 const isDeanOf = e => !!U && U.role === "dean" && !!eCollege(e) && U.college === eCollege(e);
 const isHodOf = e => !!U && U.role === "hod" && (e && e.dept === U.dept);
-const canDecide = (e, d) => { const st = approvalStage(e && e.status); if (!st) return false; if (d === "APPROVED") return st === "university" && isGlobal(); const deanStage = st === "dean"; if (d === "DAPPROVED") return deanStage && (isDeanOf(e) || isHodOf(e) || isSU()); if (d === "RETURNED" || d === "REJECTED") return deanStage ? (isDeanOf(e) || isHodOf(e) || isSU()) : isGlobal(); return false };
-const canVerify = e => !!e && e.status === "SUBMITTED" && (isGlobal() || (!!eCollege(e) && !!U && U.college === eCollege(e) && (!U.dept || isHodOf(e)) && U.role !== "dept"));
+const canDecide = (e, d) => {
+  const st = approvalStage(e && e.status);
+  if (!st) return false;
+  if (d === "APPROVED") {
+    if (st !== "university") return false;
+    if (isSU()) return true;
+    if (isDeanResearch()) return isPartEvent(e);
+    if (isIQAC()) return !isPartEvent(e);
+    return isGlobal();
+  }
+  const deanStage = st === "dean";
+  if (d === "DAPPROVED") return deanStage && (isDeanOf(e) || isHodOf(e) || isSU());
+  if (d === "RETURNED" || d === "REJECTED") {
+    if (deanStage) return isDeanOf(e) || isHodOf(e) || isSU();
+    if (st === "university") {
+      if (isSU()) return true;
+      if (isDeanResearch()) return isPartEvent(e);
+      if (isIQAC()) return !isPartEvent(e);
+      return isGlobal();
+    }
+    return false;
+  }
+  return false;
+};
+const canVerify = e => !!e && e.status === "SUBMITTED" && (
+  isGlobal() || isDocOfficer() || isIQAC() || (!!eCollege(e) && !!U && U.college === eCollege(e) && (!U.dept || isHodOf(e)) && U.role !== "dept")
+);
 const unreadNotices = () => (S.notifications || []).filter(n => !(n.read_by || []).includes(window.__ACU.uid)).length;
 const notifBell = () => { const c = unreadNotices(); return `<a class="acu-bell${c ? " has" : ""}" href="#/notifications" title="Approval notices"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${c ? `<span>${c}</span>` : ""}</a>` };
-if (!S.RN) S.RN = { su: "University Admin", ca: "College Admin", dean: "Dean / Principal", hod: "Head of Department (HOD)", dept: "Department User" };
+if (!S.RN) S.RN = {
+  su: "University Admin",
+  ca: "College Admin",
+  dean: "Dean / Principal",
+  hod: "Head of Department (HOD)",
+  dept: "Department User",
+  iqac: "Central IQAC",
+  dean_research: "Dean Research, ACU",
+  doc_officer: "Institutional Reporting / Documentation Officer"
+};
 if (!S.RN.hod) S.RN.hod = "Head of Department (HOD)";
+if (!S.RN.iqac) S.RN.iqac = "Central IQAC";
+if (!S.RN.dean_research) S.RN.dean_research = "Dean Research, ACU";
+if (!S.RN.doc_officer) S.RN.doc_officer = "Institutional Reporting / Documentation Officer";
 const RN = S.RN;
+
+const isPartEvent = e => !!e && (e.isPart === true || e.category === "part" || e.formType === "part" || (typeof e.num === "string" && (e.num.includes("/O/") || e.num.includes("/F/"))));
+const isIQAC = () => U && U.role === "iqac";
+const isDeanResearch = () => U && U.role === "dean_research";
+const isDocOfficer = () => U && U.role === "doc_officer";
 const cn = id => (S.colleges.find(c => c.id === id) || {}).name || "—", dn = id => (S.depts.find(d => d.id === id) || {}).name || "—";
 const isGlobal = () => isSU() || (U && !['NONE', 'dept', 'hod', 'ca', 'dean'].includes(U.role) && !U.college && !U.dept);
 const myDepts = () => !U ? [] : isGlobal() ? S.depts : U.dept ? S.depts.filter(d => d.id === U.dept) : S.depts.filter(d => d.college === U.college);
@@ -138,8 +180,17 @@ if (!S.customRoles['ca']) S.customRoles['ca'] = { desc: 'College Administrator',
 if (!S.customRoles['dean']) S.customRoles['dean'] = { desc: 'Dean / Principal', perms: { college: [], dept: [], users: [], events: ['view', 'create', 'edit', 'delete', 'verify', 'approve'], reports: ['view', 'export'] } };
 if (!S.customRoles['hod']) S.customRoles['hod'] = { desc: 'Head of Department (HOD)', perms: { college: [], dept: [], users: [], events: ['view', 'create', 'edit', 'verify', 'approve'], reports: ['view', 'export'] } };
 if (!S.customRoles['dept']) S.customRoles['dept'] = { desc: 'Department User', perms: { college: [], dept: [], users: [], events: ['view', 'create', 'edit', 'delete'], reports: ['view', 'export', 'submit'] } };
+if (!S.customRoles['iqac']) S.customRoles['iqac'] = { desc: 'Central IQAC: Review and authorise event organisation proposals, monitor quality documentation and accreditation evidence.', perms: { college: ['view'], dept: ['view'], users: ['view'], events: ['view', 'verify', 'approve'], reports: ['view', 'export'] } };
+if (!S.customRoles['dean_research']) S.customRoles['dean_research'] = { desc: 'Dean Research, ACU: Review and authorise academic participation proposals, including conference attendance and resource-person activities.', perms: { college: ['view'], dept: ['view'], users: ['view'], events: ['view', 'verify', 'approve'], reports: ['view', 'export'] } };
+if (!S.customRoles['doc_officer']) S.customRoles['doc_officer'] = { desc: 'Institutional Reporting / Documentation Officer: Verify report completeness, manage documentation and coordinate institutional evidence.', perms: { college: ['view'], dept: ['view'], users: ['view'], events: ['view', 'verify'], reports: ['view', 'export', 'templates'] } };
+
+if (S.users) {
+  if (!S.users.some(u => u.role === "iqac")) S.users.push({ id: "u_iqac_dir", name: "Central IQAC Reviewer", email: "iqac@acu.edu.in", role: "iqac", college: null, dept: null });
+  if (!S.users.some(u => u.role === "dean_research")) S.users.push({ id: "u_dean_res", name: "Dean Research, ACU", email: "dean.research@acu.edu.in", role: "dean_research", college: null, dept: null });
+  if (!S.users.some(u => u.role === "doc_officer")) S.users.push({ id: "u_doc_off", name: "Institutional Documentation Officer", email: "documentation@acu.edu.in", role: "doc_officer", college: null, dept: null });
+}
 const isSU = () => U && U.role === 'su';
-const canBackView = () => { const R = window.REALU; if (!R || !U || window.PORTAL) return false; if (R.role === 'su') return U.role === 'su' || (RN[U.role] === 'University Admin' && !U.college && !U.dept); return !['NONE', 'ca', 'dean', 'hod', 'dept'].includes(R.role) && !R.college && !R.dept; };
+const canBackView = () => { const R = window.REALU; if (!R || !U || window.PORTAL) return false; if (R.role === 'su') return U.role === 'su' || (RN[U.role] === 'University Admin' && !U.college && !U.dept); return !['NONE', 'ca', 'dean', 'hod', 'dept', 'iqac', 'dean_research', 'doc_officer'].includes(R.role) && !R.college && !R.dept; };
 const hasPerm = (mod, act) => {
   if (!U) return false;
   if (isSU()) return true;
@@ -173,10 +224,10 @@ function route() {
     if (perms.users && perms.users.includes("view")) T.push("users");
     if (perms.events && (perms.events.includes("verify") || perms.events.includes("approve"))) T.push("review");
     if (perms.events && (perms.events.includes("view") || perms.events.includes("create"))) T.push("events");
-    if (perms.reports && perms.reports.includes("submit") && U.role !== 'hod' && U.role !== 'dean') T.push("monthly");
+    if (perms.reports && perms.reports.includes("submit") && !['hod', 'dean', 'iqac', 'dean_research', 'doc_officer'].includes(U.role)) T.push("monthly");
     if (perms.reports && perms.reports.includes("export")) T.push("analytics");
     if (perms.reports && perms.reports.includes("view")) T.push("reports");
-    if (U.role === 'ca' || U.role === 'dept' || (perms.reports && perms.reports.includes("templates"))) T.push("templates");
+    if (U.role === 'ca' || U.role === 'dept' || U.role === 'doc_officer' || (perms.reports && perms.reports.includes("templates"))) T.push("templates");
     T = [...new Set(T)];
   }
 
@@ -184,7 +235,7 @@ function route() {
   if (!workflowOn()) T = T.filter(k => !["events", "review", "notifications"].includes(k));
   if (canBackView()) { const ri = T.indexOf("reports"); T.splice(ri < 0 ? T.length : ri + 1, 0, "back"); }
   NAV = T;
-  const L = { back: "BACK VIEW", dash: ({ su: "Super Admin Dashboard", ca: "College Dashboard", dean: "Dean / Principal Dashboard", hod: "HOD Dashboard", dept: "Department Dashboard" })[U.role] || (isGlobal() ? "University Dashboard" : `${RN[U.role] || "Custom Role"} Dashboard`), colleges: "Colleges", depts: "Departments", users: "Users", monthly: `${cycleName()} Reporting`, events: "Event Reporting", roles: "Role", review: "Approvals & Verification", reports: "Reports", templates: "Templates", analytics: "Analytics & Export", settings: "Settings", notifications: "Approval Notices" };
+  const L = { back: "BACK VIEW", dash: ({ su: "Super Admin Dashboard", ca: "College Dashboard", dean: "Dean / Principal Dashboard", hod: "HOD Dashboard", dept: "Department Dashboard", iqac: "Central IQAC Dashboard", dean_research: "Dean Research Dashboard", doc_officer: "Documentation Officer Dashboard" })[U.role] || (isGlobal() ? "University Dashboard" : `${RN[U.role] || "Custom Role"} Dashboard`), colleges: "Colleges", depts: "Departments", users: "Users", monthly: `${cycleName()} Reporting`, events: "Event Reporting", roles: "Role", review: "Approvals & Verification", reports: "Reports", templates: "Templates", analytics: "Analytics & Export", settings: "Settings", notifications: "Approval Notices" };
   $("#who").innerHTML = viewSwitch() + (workflowOn() ? notifBell() : "") + `<b>${esc(U.name)}</b><br><small>${RN[U.role] || "Custom Role"}${U.college ? " · " + esc(cn(U.college)) : ""}${U.dept ? " · " + esc(dn(U.dept)) : ""}</small> <button class="g sm" onclick="window.__ACU.changePassword()">Change password</button> <button class="g sm" onclick="window.__ACU.signOut()">Sign out</button>`;
   const I = { dash: "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z", colleges: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5", depts: "M3 21h18v-2H3v2zm4-4h10v-4H7v4zm-2-6h14V7H5v4z", users: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", monthly: "M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10z", events: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z", roles: "M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z", review: "M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z", reports: "M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z", analytics: "M3 3v18h18M21 9l-5-5-4 4-6-6", settings: "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" };
   if (p[0] === "back" && canBackView()) { const cur = { event: "submissions", edit: "submissions", rec: "heads" }[p[1]] || p[1] || "dashboard"; $("#nav").innerHTML = `<div class="bv-navtitle">BACK VIEW</div>` + [["dashboard", "Dashboard", "dash"], ["submissions", "Submissions", "reports"], ["heads", "Reports (11 heads)", "monthly"], ["users", "Users", "users"], ["review", "Approvals & Verification", "review"], ["activity", "Activity log", "analytics"]].filter(([k]) => workflowOn() || !["submissions", "review", "dashboard"].includes(k)).map(([k, l, ic]) => `<a href="#/back/${k}" class="${cur === k ? "on" : ""}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="${I[ic]}"/></svg> ${l}</a>`).join("") + `<a href="#/dash" class="bv-exit">← Exit BACK VIEW</a>`; backView(p[1], p[2]); return }
@@ -309,7 +360,7 @@ function login() {
   const logoSVG = `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`;
 
   let uOpts = '';
-  const rolesList = ['su', 'ca', 'dean', 'hod', 'dept', ...(S.customRoles ? Object.keys(S.customRoles) : [])];
+  const rolesList = ['su', 'ca', 'dean', 'hod', 'dept', 'iqac', 'dean_research', 'doc_officer', ...(S.customRoles ? Object.keys(S.customRoles) : [])];
   const uniqueRoles = [...new Set(rolesList)];
   uniqueRoles.forEach(r => {
     const ru = S.users.filter(u => u.role === r);
@@ -651,6 +702,586 @@ function deptDash() {
   $("#app").innerHTML = h;
 }
 
+
+
+// =====================================================================
+// 1. Central IQAC Dashboard (University-Level)
+// Responsibility: Review & authorise event organisation proposals,
+// monitor quality documentation and accreditation evidence.
+// =====================================================================
+function iqacDash() {
+  const E = S.events || [];
+  const orgEvents = E.filter(e => !isPartEvent(e));
+  const pendingIQAC = orgEvents.filter(e => e.status === "DAPPROVED");
+  const approvedEvents = orgEvents.filter(e => ["APPROVED", "CRETURNED"].includes(e.status));
+  const completedEvents = orgEvents.filter(e => e.status === "COMPLETED");
+
+  const allRecs = S.recs || [];
+  const recsWithFiles = allRecs.filter(r => r.files && Object.values(r.files).flat().length > 0);
+
+  const colStats = S.colleges.map(c => {
+    const cDepts = S.depts.filter(d => d.college === c.id);
+    const cDeptIds = cDepts.map(d => d.id);
+    const cEvents = orgEvents.filter(e => cDeptIds.includes(e.dept));
+    const cApp = cEvents.filter(e => ["APPROVED", "COMPLETED"].includes(e.status)).length;
+    const cComp = cEvents.filter(e => e.status === "COMPLETED").length;
+    const cRecs = allRecs.filter(r => cDeptIds.includes(r.dept));
+    const cFiles = cRecs.reduce((sum, r) => sum + (r.files ? Object.values(r.files).flat().length : 0), 0);
+    return {
+      id: c.id,
+      name: c.name,
+      code: c.code,
+      depts: cDepts.length,
+      total: cEvents.length,
+      approved: cApp,
+      completed: cComp,
+      files: cFiles
+    };
+  });
+
+  let h = `
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:8px">
+    <div>
+      <div style="display:inline-block;padding:4px 10px;background:var(--navy-deep);color:var(--on-dark);border-radius:12px;font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px">University-Level Quality Assurance</div>
+      <h2 style="margin:0">Central IQAC Dashboard</h2>
+      <p class="s" style="margin:4px 0 0">Review &amp; authorise event organisation proposals · Monitor quality documentation and institutional accreditation evidence across all constituent colleges.</p>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <a href="#/review"><button class="sm">Review Authorisations (${pendingIQAC.length})</button></a>
+      <a href="#/events"><button class="g sm">All Event Proposals</button></a>
+    </div>
+  </div>
+  ${mSel()}
+
+  <div class="grid" style="margin-top:14px">
+    <div class="card stat" style="border-top:3px solid ${pendingIQAC.length > 0 ? 'var(--wa, #ed6c02)' : 'var(--ok, #2e7d32)'}">
+      <a href="#/review" style="text-decoration:none;color:inherit;display:block">
+        <b>${pendingIQAC.length}</b>
+        <span>Proposals Awaiting IQAC Authorisation →</span>
+      </a>
+    </div>
+    <div class="card stat">
+      <b>${orgEvents.length}</b>
+      <span>Total Event Proposals</span>
+    </div>
+    <div class="card stat" style="border-top:3px solid var(--ok, #2e7d32)">
+      <b>${approvedEvents.length + completedEvents.length}</b>
+      <span>Approved &amp; Active Events</span>
+    </div>
+    <div class="card stat">
+      <b>${completedEvents.length}</b>
+      <span>Completed &amp; Verified</span>
+    </div>
+    <div class="card stat">
+      <b>${recsWithFiles.length}</b>
+      <span>Reports with Quality Evidence</span>
+    </div>
+    <div class="card stat">
+      <b>${S.colleges.length}</b>
+      <span>Constituent Colleges Monitored</span>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <div>
+        <h3 style="margin:0">Event Organisation Proposals Awaiting IQAC Authorisation</h3>
+        <p class="s" style="margin:2px 0 0">Proposals recommended by College Deans and awaiting Central IQAC final quality review and authorization.</p>
+      </div>
+      <span class="b ${pendingIQAC.length ? 'wa' : 'ok'}">${pendingIQAC.length} Pending</span>
+    </div>
+    ${pendingIQAC.length ? `
+      <div class="tw">
+        <table>
+          <tr>
+            <th>Event ID</th>
+            <th>Event Title</th>
+            <th>College</th>
+            <th>Department</th>
+            <th>Proposed Dates</th>
+            <th>Mode / Venue</th>
+            <th>Convener</th>
+            <th class="text-right">Action</th>
+          </tr>
+          ${pendingIQAC.map(e => `
+            <tr>
+              <td><code>${esc(e.num)}</code></td>
+              <td><b>${esc(e.title)}</b><br><small style="color:var(--mu)">${esc(e.type || "Event")}</small></td>
+              <td>${esc(cn(eCollege(e)))}</td>
+              <td>${esc(dn(e.dept))}</td>
+              <td>${esc(e.date)}${e.dateTo ? ` to ${esc(e.dateTo)}` : ""}</td>
+              <td>${esc(e.mode || "—")}${e.venue ? ` · ${esc(e.venue)}` : ""}</td>
+              <td>${esc(e.conv || "—")}</td>
+              <td class="text-right" style="white-space:nowrap">
+                <a href="#/events/view/${e.id}"><button class="g sm" style="margin-right:4px">View</button></a>
+                <button class="sm" onclick="window.REVIEW_OPEN='${e.id}';location.hash='#/review';route()">Review &amp; Authorise</button>
+              </td>
+            </tr>
+          `).join("")}
+        </table>
+      </div>
+    ` : '<div class="empty">All event organisation proposals are up to date. No pending proposals awaiting IQAC authorisation.</div>'}
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <div>
+        <h3 style="margin:0">Accreditation Documentation &amp; Quality Evidence Monitor</h3>
+        <p class="s" style="margin:2px 0 0">Event completion verification, proceedings, geo-tagged photos and supporting documentation by constituent college.</p>
+      </div>
+    </div>
+    <div class="tw">
+      <table>
+        <tr>
+          <th>Constituent College</th>
+          <th>Departments</th>
+          <th>Proposals Submitted</th>
+          <th>Approved / Active</th>
+          <th>Completed &amp; Verified</th>
+          <th>Evidence Files</th>
+          <th class="text-right">Action</th>
+        </tr>
+        ${colStats.map(c => `
+          <tr>
+            <td><b>${esc(c.name)}</b> <span class="b" style="font-size:10px">${esc(c.code)}</span></td>
+            <td>${c.depts}</td>
+            <td>${c.total}</td>
+            <td><span class="ok">${c.approved}</span></td>
+            <td><span class="ok" style="font-weight:600">${c.completed}</span></td>
+            <td><span class="b ok">${c.files} file(s)</span></td>
+            <td class="text-right">
+              <a href="#/events"><button class="g sm">View College Events</button></a>
+            </td>
+          </tr>
+        `).join("")}
+      </table>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:16px">
+    <div class="card" style="margin:0">
+      <h3>Recent Completed Events (Accreditation Ready)</h3>
+      <p class="s">Events with filed and verified event proceedings and documentation.</p>
+      ${completedEvents.length ? `
+        <div class="tw">
+          <table>
+            <tr><th>Event ID</th><th>Event Title</th><th>Department</th><th>Date</th><th>Verification</th></tr>
+            ${completedEvents.slice(-6).reverse().map(e => `
+              <tr>
+                <td><a href="#/events/view/${e.id}"><code>${esc(e.num)}</code></a></td>
+                <td>${esc(e.title)}</td>
+                <td>${esc(dn(e.dept))}</td>
+                <td>${esc(e.date)}</td>
+                <td><span class="b ok">Verified</span></td>
+              </tr>
+            `).join("")}
+          </table>
+        </div>
+      ` : '<div class="empty">No completed events verified yet.</div>'}
+    </div>
+
+    <div class="card" style="margin:0">
+      <h3>Accreditation &amp; Quality Tools</h3>
+      <p class="s">Direct access to institutional quality coordination workflows.</p>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+        <a href="#/review" style="text-decoration:none"><button style="width:100%;text-align:left;display:flex;justify-content:space-between"><span>Open Authorisations Queue</span><span>→</span></button></a>
+        <a href="#/reports" style="text-decoration:none"><button class="g" style="width:100%;text-align:left;display:flex;justify-content:space-between"><span>All University Reports (11 Headings)</span><span>→</span></button></a>
+        <a href="#/analytics" style="text-decoration:none"><button class="g" style="width:100%;text-align:left;display:flex;justify-content:space-between"><span>Quality Analytics &amp; Export (CSV)</span><span>→</span></button></a>
+        <button class="g" onclick="print()" style="width:100%;text-align:left;display:flex;justify-content:space-between"><span>Print Executive Quality Briefing</span><span>⎙</span></button>
+      </div>
+    </div>
+  </div>
+  `;
+  $("#app").innerHTML = h;
+}
+
+// =====================================================================
+// 2. Dean Research, ACU Dashboard (University-Level)
+// Responsibility: Review & authorise academic participation proposals,
+// including conference attendance and resource-person activities.
+// =====================================================================
+function deanResearchDash() {
+  const E = S.events || [];
+  const partEvents = E.filter(isPartEvent);
+  const pendingResearch = partEvents.filter(e => e.status === "DAPPROVED");
+  const approvedPart = partEvents.filter(e => ["APPROVED", "COMPLETED"].includes(e.status));
+  const completedPart = partEvents.filter(e => e.status === "COMPLETED");
+
+  const facultyPartCount = partEvents.filter(e => e.partType === "F" || (e.num && e.num.includes("/F/"))).length;
+  const orgPartCount = partEvents.filter(e => e.partType === "O" || (e.num && e.num.includes("/O/"))).length;
+
+  const totalAssistance = approvedPart.reduce((acc, e) => acc + (Number(e.costFig) || 0), 0);
+
+  const allRecs = S.recs || [];
+  const pubRecs = allRecs.filter(r => r.head === "pub");
+  const patRecs = allRecs.filter(r => r.head === "pat");
+
+  const colStats = S.colleges.map(c => {
+    const cDepts = S.depts.filter(d => d.college === c.id);
+    const cDeptIds = cDepts.map(d => d.id);
+    const cPartEvents = partEvents.filter(e => cDeptIds.includes(e.dept));
+    const cApproved = cPartEvents.filter(e => ["APPROVED", "COMPLETED"].includes(e.status)).length;
+    const cPubs = pubRecs.filter(r => cDeptIds.includes(r.dept)).length;
+    const cPats = patRecs.filter(r => cDeptIds.includes(r.dept)).length;
+    const cCost = cPartEvents.reduce((acc, e) => acc + (Number(e.costFig) || 0), 0);
+    return {
+      id: c.id,
+      name: c.name,
+      code: c.code,
+      totalPart: cPartEvents.length,
+      approvedPart: cApproved,
+      pubs: cPubs,
+      pats: cPats,
+      cost: cCost
+    };
+  });
+
+  let h = `
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:8px">
+    <div>
+      <div style="display:inline-block;padding:4px 10px;background:var(--navy-deep);color:var(--on-dark);border-radius:12px;font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px">University-Level Research &amp; Academic Mobility</div>
+      <h2 style="margin:0">Dean Research Dashboard</h2>
+      <p class="s" style="margin:4px 0 0">Review &amp; authorise academic participation proposals, including conference attendance, workshops, and resource-person activities across ACU.</p>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <a href="#/review"><button class="sm">Review Authorisations (${pendingResearch.length})</button></a>
+      <a href="#/events"><button class="g sm">Participation Registry</button></a>
+    </div>
+  </div>
+  ${mSel()}
+
+  <div class="grid" style="margin-top:14px">
+    <div class="card stat" style="border-top:3px solid ${pendingResearch.length > 0 ? 'var(--wa, #ed6c02)' : 'var(--ok, #2e7d32)'}">
+      <a href="#/review" style="text-decoration:none;color:inherit;display:block">
+        <b>${pendingResearch.length}</b>
+        <span>Participation Proposals Awaiting Authorisation →</span>
+      </a>
+    </div>
+    <div class="card stat">
+      <b>${partEvents.length}</b>
+      <span>Total Academic Participation Proposals</span>
+    </div>
+    <div class="card stat">
+      <b>${facultyPartCount} F / ${orgPartCount} O</b>
+      <span>Faculty (F) vs Organizer (O)</span>
+    </div>
+    <div class="card stat" style="border-top:3px solid var(--ok, #2e7d32)">
+      <b>${approvedPart.length}</b>
+      <span>Approved Participations</span>
+    </div>
+    <div class="card stat">
+      <b>Rs. ${totalAssistance.toLocaleString('en-IN')}</b>
+      <span>Financial Assistance Sanctioned</span>
+    </div>
+    <div class="card stat">
+      <b>${pubRecs.length + patRecs.length}</b>
+      <span>Publications (${pubRecs.length}) &amp; Patents (${patRecs.length})</span>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <div>
+        <h3 style="margin:0">Academic Participation Proposals Awaiting Dean Research Authorisation</h3>
+        <p class="s" style="margin:2px 0 0">Conference attendances, seminars, workshops, FDPs and resource-person participation proposals awaiting university research authorization.</p>
+      </div>
+      <span class="b ${pendingResearch.length ? 'wa' : 'ok'}">${pendingResearch.length} Pending</span>
+    </div>
+    ${pendingResearch.length ? `
+      <div class="tw">
+        <table>
+          <tr>
+            <th>Proposal ID</th>
+            <th>Type</th>
+            <th>Title / Topic</th>
+            <th>Attendee / Faculty</th>
+            <th>College &amp; Department</th>
+            <th>Dates</th>
+            <th>Financial Assistance</th>
+            <th class="text-right">Action</th>
+          </tr>
+          ${pendingResearch.map(e => `
+            <tr>
+              <td><code>${esc(e.num)}</code></td>
+              <td><span class="b" style="font-size:11px">${e.partType === "F" ? "Faculty" : "Organizer"}</span></td>
+              <td><b>${esc(e.title)}</b><br><small style="color:var(--mu)">${esc(e.type || "Conference")}</small></td>
+              <td>${esc(e.faculty || "—")}${e.conv ? `<br><small style="color:var(--mu)">Conv: ${esc(e.conv)}</small>` : ""}</td>
+              <td>${esc(cn(eCollege(e)))}<br><small style="color:var(--mu)">${esc(dn(e.dept))}</small></td>
+              <td>${esc(e.date)}${e.dateTo ? ` to ${esc(e.dateTo)}` : ""}</td>
+              <td>${e.costFig ? `Rs. ${Number(e.costFig).toLocaleString('en-IN')}` : "—"}</td>
+              <td class="text-right" style="white-space:nowrap">
+                <a href="#/events/view/${e.id}"><button class="g sm" style="margin-right:4px">View</button></a>
+                <button class="sm" onclick="window.REVIEW_OPEN='${e.id}';location.hash='#/review';route()">Review &amp; Authorise</button>
+              </td>
+            </tr>
+          `).join("")}
+        </table>
+      </div>
+    ` : '<div class="empty">No academic participation proposals currently waiting for Dean Research authorisation.</div>'}
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <div>
+        <h3 style="margin:0">Academic Participation &amp; Research Distribution by College</h3>
+        <p class="s" style="margin:2px 0 0">Constituent college distribution of faculty participation, research publications, and patent filings.</p>
+      </div>
+    </div>
+    <div class="tw">
+      <table>
+        <tr>
+          <th>Constituent College</th>
+          <th>Participations</th>
+          <th>Approved</th>
+          <th>Publications</th>
+          <th>Patents</th>
+          <th>Financial Assistance (Rs.)</th>
+          <th class="text-right">Action</th>
+        </tr>
+        ${colStats.map(c => `
+          <tr>
+            <td><b>${esc(c.name)}</b> <span class="b" style="font-size:10px">${esc(c.code)}</span></td>
+            <td>${c.totalPart}</td>
+            <td><span class="ok">${c.approvedPart}</span></td>
+            <td><span class="ok" style="font-weight:600">${c.pubs}</span></td>
+            <td>${c.pats}</td>
+            <td>Rs. ${c.cost.toLocaleString('en-IN')}</td>
+            <td class="text-right">
+              <a href="#/events"><button class="g sm">View Records</button></a>
+            </td>
+          </tr>
+        `).join("")}
+      </table>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:16px">
+    <div class="card" style="margin:0">
+      <h3>Recent Approved Academic Participations</h3>
+      <p class="s">Conferences, seminars, and FDPs authorized for attendance and faculty mobility.</p>
+      ${approvedPart.length ? `
+        <div class="tw">
+          <table>
+            <tr><th>Proposal ID</th><th>Topic</th><th>Faculty</th><th>College</th><th>Date</th></tr>
+            ${approvedPart.slice(-6).reverse().map(e => `
+              <tr>
+                <td><a href="#/events/view/${e.id}"><code>${esc(e.num)}</code></a></td>
+                <td>${esc(e.title)}</td>
+                <td>${esc(e.faculty || "—")}</td>
+                <td>${esc(cn(eCollege(e)))}</td>
+                <td>${esc(e.date)}</td>
+              </tr>
+            `).join("")}
+          </table>
+        </div>
+      ` : '<div class="empty">No approved academic participation records yet.</div>'}
+    </div>
+
+    <div class="card" style="margin:0">
+      <h3>Research Coordination Actions</h3>
+      <p class="s">Tools for research oversight and faculty mobility monitoring.</p>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+        <a href="#/review" style="text-decoration:none"><button style="width:100%;text-align:left;display:flex;justify-content:space-between"><span>Open Authorisations Queue</span><span>→</span></button></a>
+        <a href="#/events" style="text-decoration:none"><button class="g" style="width:100%;text-align:left;display:flex;justify-content:space-between"><span>Academic Participation Registry</span><span>→</span></button></a>
+        <a href="#/reports" style="text-decoration:none"><button class="g" style="width:100%;text-align:left;display:flex;justify-content:space-between"><span>Publications &amp; Patents Reports</span><span>→</span></button></a>
+        <a href="#/analytics" style="text-decoration:none"><button class="g" style="width:100%;text-align:left;display:flex;justify-content:space-between"><span>Export Research &amp; Participation Data</span><span>→</span></button></a>
+      </div>
+    </div>
+  </div>
+  `;
+  $("#app").innerHTML = h;
+}
+
+// =====================================================================
+// 3. Institutional Reporting / Documentation Officer Dashboard
+// Responsibility: Verify report completeness, manage documentation
+// and coordinate institutional evidence. (SPECIALISED)
+// =====================================================================
+function docOfficerDash() {
+  const E = S.events || [];
+  const submittedEvents = E.filter(e => e.status === "SUBMITTED");
+  const completedEvents = E.filter(e => e.status === "COMPLETED");
+
+  const D = S.depts || [];
+  const allRecs = S.recs || [];
+  const doneDeptsCount = D.filter(deptDone).length;
+  const completenessRate = D.length ? Math.round((doneDeptsCount / D.length) * 100) : 0;
+
+  let totalFilesCount = 0;
+  const headingFiles = {};
+  H.forEach(h => { headingFiles[h[0]] = 0; });
+  allRecs.forEach(r => {
+    if (r.files) {
+      Object.entries(r.files).forEach(([fKey, fileArr]) => {
+        if (Array.isArray(fileArr)) {
+          totalFilesCount += fileArr.length;
+          if (headingFiles[r.head] !== undefined) headingFiles[r.head] += fileArr.length;
+        }
+      });
+    }
+  });
+
+  const t = tally(D);
+
+  let h = `
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:8px">
+    <div>
+      <div style="display:inline-block;padding:4px 10px;background:var(--navy-deep);color:var(--on-dark);border-radius:12px;font-size:11px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:6px">Specialised Institutional Quality &amp; Documentation</div>
+      <h2 style="margin:0">Institutional Reporting &amp; Documentation Officer Dashboard</h2>
+      <p class="s" style="margin:4px 0 0">Verify report completeness · Manage documentation and coordinate institutional evidence for NAAC, NIRF, and AQAR accreditation.</p>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <a href="#/review"><button class="sm">Verification Queue (${submittedEvents.length})</button></a>
+      <a href="#/reports"><button class="g sm">Browse All Reports</button></a>
+    </div>
+  </div>
+  ${mSel()}
+
+  <div class="grid" style="margin-top:14px">
+    <div class="card stat" style="border-top:3px solid ${submittedEvents.length > 0 ? 'var(--wa, #ed6c02)' : 'var(--ok, #2e7d32)'}">
+      <a href="#/review" style="text-decoration:none;color:inherit;display:block">
+        <b>${submittedEvents.length}</b>
+        <span>Reports Awaiting Verification →</span>
+      </a>
+    </div>
+    <div class="card stat" style="border-top:3px solid ${completenessRate === 100 ? 'var(--ok, #2e7d32)' : 'var(--wa, #ed6c02)'}">
+      <b>${completenessRate}%</b>
+      <span>Overall Reporting Completeness (${doneDeptsCount}/${D.length} depts)</span>
+    </div>
+    <div class="card stat">
+      <b>${totalFilesCount}</b>
+      <span>Uploaded Institutional Evidence Files</span>
+    </div>
+    <div class="card stat">
+      <b>${t.data}</b>
+      <span>Headings with Data Filed (${M})</span>
+    </div>
+    <div class="card stat">
+      <b>${t.zero}</b>
+      <span>Zero Submissions Monitored (${M})</span>
+    </div>
+    <div class="card stat">
+      <b>${completedEvents.length}</b>
+      <span>Verified Completed Events</span>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <div>
+        <h3 style="margin:0">Event &amp; Activity Verification Queue (Completeness Audit)</h3>
+        <p class="s" style="margin:2px 0 0">Submitted completion reports with attached proofs, attendance sheets, and photographs requiring officer verification.</p>
+      </div>
+      <span class="b ${submittedEvents.length ? 'wa' : 'ok'}">${submittedEvents.length} Waiting</span>
+    </div>
+    ${submittedEvents.length ? `
+      <div class="tw">
+        <table>
+          <tr>
+            <th>Event ID</th>
+            <th>Title</th>
+            <th>College</th>
+            <th>Department</th>
+            <th>Submitted By</th>
+            <th>Enclosures / Evidence</th>
+            <th class="text-right">Action</th>
+          </tr>
+          ${submittedEvents.map(e => {
+            const org = orgRec(e);
+            const fileCount = org && org.files ? Object.values(org.files).flat().length : 0;
+            return `
+            <tr>
+              <td><code>${esc(e.num)}</code></td>
+              <td><b>${esc(e.title)}</b><br><small style="color:var(--mu)">${isPartEvent(e) ? "Academic Participation" : "Event Organize"}</small></td>
+              <td>${esc(cn(eCollege(e)))}</td>
+              <td>${esc(dn(e.dept))}</td>
+              <td>${esc(e.by || "—")}</td>
+              <td><span class="b ok">${fileCount} attachment(s)</span>${org && org.article ? ' <span class="b" style="font-size:10px">Article PDF</span>' : ''}</td>
+              <td class="text-right" style="white-space:nowrap">
+                <a href="#/events/view/${e.id}"><button class="g sm" style="margin-right:4px">View</button></a>
+                <button class="sm" onclick="window.REVIEW_OPEN='${e.id}';location.hash='#/review';route()">Verify Documentation</button>
+              </td>
+            </tr>
+            `;
+          }).join("")}
+        </table>
+      </div>
+    ` : '<div class="empty">All submitted reports have been verified. No pending documentation audits.</div>'}
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <div>
+        <h3 style="margin:0">College-Wise Reporting Completeness Audit Matrix (${M})</h3>
+        <p class="s" style="margin:2px 0 0">Compliance tracking across all constituent colleges and constituent academic units.</p>
+      </div>
+      ${legend}
+    </div>
+    <div class="tw">
+      <table>
+        <tr>
+          <th>Constituent College</th>
+          <th>Departments</th>
+          <th>Depts 100% Complete</th>
+          <th>Reporting Completeness Status</th>
+          <th>Submitted to University</th>
+        </tr>
+        ${S.colleges.map(c => {
+          const ds = S.depts.filter(d => d.college === c.id);
+          const done = ds.filter(deptDone).length;
+          const isSubmitted = Boolean(S.subs[c.id + "|" + M] || (ds.length > 0 && ds.every(deptDone)));
+          return `
+          <tr>
+            <td><b>${esc(c.name)}</b> <span class="b" style="font-size:10px">${esc(c.code)}</span></td>
+            <td>${ds.length}</td>
+            <td><b style="color:${done === ds.length && ds.length > 0 ? 'var(--ok)' : 'inherit'}">${done} / ${ds.length}</b></td>
+            <td>${bar(tally(ds))}</td>
+            <td>${isSubmitted ? '<span class="ok" style="font-weight:600">Yes</span>' : '<span class="er">No</span>'}</td>
+          </tr>
+          `;
+        }).join("")}
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <div>
+        <h3 style="margin:0">Institutional Evidence Vault &amp; Documentation Repository</h3>
+        <p class="s" style="margin:2px 0 0">Audit of primary evidence, certificates, reports, and digital proofs across all 11 criteria headings.</p>
+      </div>
+    </div>
+    <div class="tw">
+      <table>
+        <tr>
+          <th class="w-1">#</th>
+          <th>Heading / Category</th>
+          <th>Total Records</th>
+          <th>Uploaded Evidence Files</th>
+          <th>Zero Submissions</th>
+          <th>Missing Depts</th>
+        </tr>
+        ${H.map((hx, idx) => {
+          const recCount = allRecs.filter(r => r.head === hx[0]).length;
+          const zeroCount = S.zeros.filter(z => z.month === M && z.head === hx[0]).length;
+          const missingCount = D.filter(d => hs(d.id, hx[0]) === "none").length;
+          return `
+          <tr>
+            <td class="w-1" style="color:var(--mu)">${idx + 1}</td>
+            <td><b>${hx[1]}</b></td>
+            <td>${recCount}</td>
+            <td><span class="b ok">${headingFiles[hx[0]] || 0} file(s)</span></td>
+            <td>${zeroCount}</td>
+            <td><span class="${missingCount > 0 ? 'er' : 'ok'}">${missingCount}</span></td>
+          </tr>
+          `;
+        }).join("")}
+      </table>
+    </div>
+  </div>
+  `;
+  $("#app").innerHTML = h;
+}
 
 function dash() {
   if (U.role === "hod") return hodDash();
@@ -1293,7 +1924,7 @@ function roles(a, rId) {
   }
 
   window.delRole = async (rId) => {
-    if (['su', 'ca', 'dean', 'hod', 'dept'].includes(rId)) return alert('System default roles cannot be deleted.');
+    if (['su', 'ca', 'dean', 'hod', 'dept', 'iqac', 'dean_research', 'doc_officer'].includes(rId)) return alert('System default roles cannot be deleted.');
     const assigned = S.users.filter(u => u.role === rId);
     const msg = assigned.length ?
       `There are ${assigned.length} user(s) assigned to "${RN[rId] || rId}". Deleting it will unassign them. Continue?` :
@@ -1346,7 +1977,7 @@ function roles(a, rId) {
 
   let rows = rolesList.map(r => {
     const roleUsers = S.users.filter(u => u.role === r.id && (u.role !== 'su' || isSU()));
-    const roleCols = r.id === "su" ? "ALL" : [...new Set(roleUsers.map(u => u.college).filter(Boolean))].map(cid => S.colleges.find(c => c.id === cid)).filter(Boolean);
+    const roleCols = (r.id === "su" || r.id === "iqac" || r.id === "dean_research" || r.id === "doc_officer") ? "ALL" : [...new Set(roleUsers.map(u => u.college).filter(Boolean))].map(cid => S.colleges.find(c => c.id === cid)).filter(Boolean);
     const isSys = ['su', 'ca', 'dean', 'hod', 'dept'].includes(r.id);
 
     return `
@@ -1528,7 +2159,10 @@ function users(action, id) {
               <label>Role</label>
               <select id="eu_r" ${u.role === 'su' ? 'disabled' : ''}>
                  ${u.role === 'su' ? `<option value="su" selected>${esc(RN.su)}</option>` : `${gl ? `<option value="ca" ${u.role === 'ca' ? 'selected' : ''}>${esc(RN.ca)}</option>
-                 <option value="dean" ${u.role === 'dean' ? 'selected' : ''}>${esc(RN.dean)}</option>` : ``}
+                 <option value="dean" ${u.role === 'dean' ? 'selected' : ''}>${esc(RN.dean)}</option>
+                 <option value="iqac" ${u.role === 'iqac' ? 'selected' : ''}>${esc(RN.iqac || "Central IQAC")}</option>
+                 <option value="dean_research" ${u.role === 'dean_research' ? 'selected' : ''}>${esc(RN.dean_research || "Dean Research, ACU")}</option>
+                 <option value="doc_officer" ${u.role === 'doc_officer' ? 'selected' : ''}>${esc(RN.doc_officer || "Institutional Reporting / Documentation Officer")}</option>` : ``}
                  <option value="hod" ${u.role === 'hod' ? 'selected' : ''}>${esc(RN.hod || "Head of Department (HOD)")}</option>
                  <option value="dept" ${u.role === 'dept' ? 'selected' : ''}>${esc(RN.dept)}</option>
                  ${Object.keys(S.customRoles || {}).filter(k => !['ca', 'dean', 'dept', 'hod'].includes(k)).map(k => `<option value="${k}" ${u.role === k ? 'selected' : ''}>${esc(RN[k] || k)}</option>`).join("")}`}
@@ -1624,7 +2258,10 @@ function users(action, id) {
   <h2>Users</h2>
   <p class="s">${gl ? "Create college admins, deans and other university admins." : "Create one login per department."}</p>
   
-  ${canCre ? `<div class="card" style="margin-bottom:24px"><div class="row"><div><label>Full name *</label><input id="u_n"></div><div><label>Role *</label><select id="u_r">${gl ? `<option value="ca">${esc(RN.ca)}</option><option value="dean">${esc(RN.dean)}</option>` : ``}<option value="hod">${esc(RN.hod || "Head of Department (HOD)")}</option><option value="dept">${esc(RN.dept)}</option>${Object.keys(S.customRoles || {}).filter(k => !['ca', 'dean', 'hod', 'dept'].includes(k)).map(k => `<option value="${k}">${esc(RN[k] || k)}</option>`).join("")}</select></div>
+  ${canCre ? `<div class="card" style="margin-bottom:24px"><div class="row"><div><label>Full name *</label><input id="u_n"></div><div><label>Role *</label><select id="u_r">${gl ? `<option value="ca">${esc(RN.ca)}</option><option value="dean">${esc(RN.dean)}</option>
+  <option value="iqac">${esc(RN.iqac || "Central IQAC")}</option>
+  <option value="dean_research">${esc(RN.dean_research || "Dean Research, ACU")}</option>
+  <option value="doc_officer">${esc(RN.doc_officer || "Institutional Reporting / Documentation Officer")}</option>` : ``}<option value="hod">${esc(RN.hod || "Head of Department (HOD)")}</option><option value="dept">${esc(RN.dept)}</option>${Object.keys(S.customRoles || {}).filter(k => !['ca', 'dean', 'hod', 'dept'].includes(k)).map(k => `<option value="${k}">${esc(RN[k] || k)}</option>`).join("")}</select></div>
 <div id="u_cw" ${gl ? "" : "hidden"}><label>College</label><select id="u_c"><option value="">Select College</option>${S.colleges.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select></div><div id="u_dw" hidden><label>Department</label><select id="u_d"><option value="">Select Department</option></select></div><div><label>Email ID *</label><input id="u_p" type="email" placeholder="name@acu.ac.in"></div></div><button id="u_g">Create user</button></div>` : ''}
   
   <div class="card" style="padding:0; overflow-x:auto;">
@@ -1646,8 +2283,8 @@ function users(action, id) {
   const sync = () => {
     const r = $("#u_r") ? $("#u_r").value : null;
     const c = gl ? ($("#u_c") ? $("#u_c").value : "") : U.college;
-    if ($("#u_cw")) $("#u_cw").hidden = !(gl && r !== "su");
-    if ($("#u_dw")) $("#u_dw").hidden = (r === "su" || r === "ca" || r === "dean");
+    if ($("#u_cw")) $("#u_cw").hidden = !(gl && !['su', 'iqac', 'dean_research', 'doc_officer'].includes(r));
+    if ($("#u_dw")) $("#u_dw").hidden = (r === "su" || r === "ca" || r === "dean" || r === "iqac" || r === "dean_research" || r === "doc_officer");
     if ($("#u_d")) {
       if (!c && gl && r !== "su") {
         $("#u_d").innerHTML = `<option value="">Select College first</option>`;
@@ -2235,7 +2872,12 @@ function review() {
   const card = (e, approveTo, approveLabel) => `<div class="card"><code>${esc(e.num)}</code> ${badge(e.status)}<h3 style="margin:6px 0 0">${esc(e.title)}</h3><small>${esc(cn(eCollege(e)))} · ${esc(dn(e.dept))} · ${e.date} · ${esc(e.venue || "venue not given")} · ${esc(e.type || "")}</small>${apForm(e)}<input id="n_${e.id}" placeholder="Remarks (required for return / reject)"><button class="k sm" onclick="dec('${e.id}','${approveTo}')">${approveLabel}</button><button class="g sm" onclick="dec('${e.id}','RETURNED')">Return</button><button class="r sm" onclick="dec('${e.id}','REJECTED')">Reject</button></div>`;
   if (open) {
     const vcard = e => `<div class="card"><code>${esc(e.num)}</code> ${badge(e.status)}<h3 style="margin:6px 0 0">${esc(e.title)}</h3><small>${esc(cn(eCollege(e)))} · approved for ${e.date}, ${esc(e.venue || "")}</small>${repBlock(e)}<input id="n_${e.id}" placeholder="Remarks (required for return)"><button class="k sm" onclick="dec('${e.id}','COMPLETED')">Verify</button><button class="g sm" onclick="dec('${e.id}','CRETURNED')">Return for correction</button></div>`;
-    const body = open.status === "PENDING" && deanStage ? card(open, "DAPPROVED", hodStage ? "Approve (HOD)" : "Approve") : open.status === "DAPPROVED" && univStage ? card(open, "APPROVED", "Final Approve") : open.status === "SUBMITTED" && verStage ? vcard(open) : '';
+    let approveBtnLabel = "Final Approve";
+    if (isIQACRole) approveBtnLabel = "Authorise Event (Central IQAC)";
+    else if (isDeanResearchRole) approveBtnLabel = "Authorise Participation (Dean Research)";
+    else if (isDocOfficerRole) approveBtnLabel = "Verify Documentation";
+    const canUnivDecide = univStage && (isSU() || (isIQACRole && !isPartEvent(open)) || (isDeanResearchRole && isPartEvent(open)));
+    const body = open.status === "PENDING" && deanStage ? card(open, "DAPPROVED", hodStage ? "Approve (HOD)" : "Approve") : open.status === "DAPPROVED" && canUnivDecide ? card(open, "APPROVED", approveBtnLabel) : open.status === "SUBMITTED" && verStage ? vcard(open) : '';
     if (body) { $("#app").innerHTML = `<h2>Approvals &amp; verification</h2>${back}${body}`; hydrate($("#app")); return }
     window.REVIEW_OPEN = null;
   }
