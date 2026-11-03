@@ -135,8 +135,8 @@ const cyclePeriod = () => S.reportCycle === 'yearly' ? 'year' : S.reportCycle ==
 
 if (!S.customRoles) S.customRoles = {};
 if (!S.customRoles['ca']) S.customRoles['ca'] = { desc: 'College Administrator', perms: { college: [], dept: ['view', 'create', 'edit', 'delete'], users: ['view', 'create', 'delete'], events: ['view', 'create', 'edit', 'delete', 'verify', 'approve'], reports: ['view', 'export', 'submit'] } };
-if (!S.customRoles['dean']) S.customRoles['dean'] = { desc: 'Dean / Principal', perms: { college: [], dept: ['view', 'create', 'edit', 'delete'], users: [], events: ['view', 'create', 'edit', 'delete', 'verify', 'approve'], reports: ['view', 'export', 'submit'] } };
-if (!S.customRoles['hod']) S.customRoles['hod'] = { desc: 'Head of Department (HOD)', perms: { college: ['view'], dept: ['view'], users: ['view'], events: ['view', 'create', 'edit', 'verify', 'approve'], reports: ['view', 'export'] } };
+if (!S.customRoles['dean']) S.customRoles['dean'] = { desc: 'Dean / Principal', perms: { college: [], dept: [], users: [], events: ['view', 'create', 'edit', 'delete', 'verify', 'approve'], reports: ['view', 'export'] } };
+if (!S.customRoles['hod']) S.customRoles['hod'] = { desc: 'Head of Department (HOD)', perms: { college: [], dept: [], users: [], events: ['view', 'create', 'edit', 'verify', 'approve'], reports: ['view', 'export'] } };
 if (!S.customRoles['dept']) S.customRoles['dept'] = { desc: 'Department User', perms: { college: [], dept: [], users: [], events: ['view', 'create', 'edit', 'delete'], reports: ['view', 'export', 'submit'] } };
 const isSU = () => U && U.role === 'su';
 const canBackView = () => { const R = window.REALU; if (!R || !U || window.PORTAL) return false; if (R.role === 'su') return U.role === 'su' || (RN[U.role] === 'University Admin' && !U.college && !U.dept); return !['NONE', 'ca', 'dean', 'hod', 'dept'].includes(R.role) && !R.college && !R.dept; };
@@ -144,8 +144,11 @@ const hasPerm = (mod, act) => {
   if (!U) return false;
   if (isSU()) return true;
   if (S.customRoles && S.customRoles[U.role]) {
-    const p = S.customRoles[U.role].perms[mod];
-    return p && p.includes(act);
+    const p = S.customRoles[U.role].perms && S.customRoles[U.role].perms[mod];
+    if (!p) return false;
+    if (p.includes(act)) return true;
+    if (act === 'edit' && p.includes('create')) return true;
+    if (act === 'delete' && p.includes('create') && (mod === 'college' || mod === 'dept')) return true;
   }
   return false;
 };
@@ -160,23 +163,22 @@ function route() {
   const p = (location.hash || "#/dash").slice(2).split("/"); if (!location.hash && !window.__ACU_LANDED) { window.__ACU_LANDED = 1; location.replace("#/dash"); p[0] = "dash"; }
   U = S.users.find(u => u.id === window.__ACU.uid) || null; window.REALU = U; window.PORTAL = null; { let P = null; try { P = sessionStorage.getItem("acu_portal") } catch (e) { } if (P) { const pc = S.colleges.find(c => String(c.code || "").toLowerCase() === P); if (!pc) { try { sessionStorage.removeItem("acu_portal") } catch (e) { } } else if (U && U.role === "su") { try { sessionStorage.removeItem("acu_view") } catch (e) { } U = Object.assign({}, U, { role: "ca", college: pc.id, dept: null }); window.PORTAL = pc } else if (!U || U.college !== pc.id) { $("#nav").innerHTML = ""; $("#who").innerHTML = `<button class="g sm" onclick="window.__ACU.signOut()">Sign out</button>`; $("#app").innerHTML = `<h2>Access denied</h2><p class="s">This account is not authorized to access ${esc(pc.name)}.</p><button onclick="try{sessionStorage.removeItem('acu_portal')}catch(e){};location.href='/'">Go back</button>`; return } else window.PORTAL = pc } } if (U && U.role === "su" && !window.PORTAL) { let v = null; try { v = JSON.parse(sessionStorage.getItem("acu_view") || "null") } catch (e) { } if (v && v.role && v.role !== "su") U = Object.assign({}, U, { role: v.role, college: v.college || null, dept: v.dept || null }) } if (!U || !U.role || U.role === "NONE") { $("#nav").innerHTML = ""; $("#who").innerHTML = `<button class="g sm" onclick="window.__ACU.signOut()">Sign out</button>`; $("#app").innerHTML = `<h2>No access yet</h2><p class="s">Your account has no role assigned. Please ask your administrator.</p>`; return }
   let T = [];
-  if (U.role === 'su') T = ["dash", "colleges", "depts", "users", "emails", "roles", "analytics", "reports", "settings"];
-  else if (U.role === 'ca') T = ["dash", "depts", "users", "review", "analytics", "reports", "templates"];
-  else if (U.role === 'dean') T = ["dash", "review", "events", "analytics", "reports"];
-  else if (U.role === 'hod') T = ["dash", "review", "events", "analytics", "reports"];
-  else if (U.role === 'dept') T = ["dash", "events", "monthly", "reports", "templates"];
-  else if (S.customRoles && S.customRoles[U.role]) {
-    const perms = S.customRoles[U.role].perms || {};
+  if (U.role === 'su') {
+    T = ["dash", "colleges", "depts", "users", "emails", "roles", "analytics", "reports", "settings"];
+  } else {
     T.push("dash");
+    const perms = (S.customRoles && S.customRoles[U.role] && S.customRoles[U.role].perms) || {};
     if (perms.college && perms.college.includes("view")) T.push("colleges");
     if (perms.dept && perms.dept.includes("view")) T.push("depts");
     if (perms.users && perms.users.includes("view")) T.push("users");
     if (perms.events && (perms.events.includes("verify") || perms.events.includes("approve"))) T.push("review");
-    if (perms.events && perms.events.length > 0) T.push("events");
+    if (perms.events && (perms.events.includes("view") || perms.events.includes("create"))) T.push("events");
+    if (perms.reports && perms.reports.includes("submit") && U.role !== 'hod' && U.role !== 'dean') T.push("monthly");
     if (perms.reports && perms.reports.includes("export")) T.push("analytics");
     if (perms.reports && perms.reports.includes("view")) T.push("reports");
+    if (U.role === 'ca' || U.role === 'dept' || (perms.reports && perms.reports.includes("templates"))) T.push("templates");
     T = [...new Set(T)];
-  } else T = ["dash"];
+  }
 
   T.push("notifications");
   if (!workflowOn()) T = T.filter(k => !["events", "review", "notifications"].includes(k));
@@ -307,7 +309,7 @@ function login() {
   const logoSVG = `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`;
 
   let uOpts = '';
-  const rolesList = ['su', 'ca', 'dean', 'dept', ...(S.customRoles ? Object.keys(S.customRoles) : [])];
+  const rolesList = ['su', 'ca', 'dean', 'hod', 'dept', ...(S.customRoles ? Object.keys(S.customRoles) : [])];
   const uniqueRoles = [...new Set(rolesList)];
   uniqueRoles.forEach(r => {
     const ru = S.users.filter(u => u.role === r);
@@ -827,10 +829,10 @@ function depts(a, fid) {
 <h3 style="margin-top:16px">Department User 1 (optional)</h3><div class="row"><div><label for="d_un">User 1 full name</label><input id="d_un"></div><div><label for="d_ue">User 1 email ID</label><input id="d_ue" type="email"></div></div>
 <h3 style="margin-top:16px">Department User 2 (optional)</h3><div class="row"><div><label for="d_un2">User 2 full name</label><input id="d_un2"></div><div><label for="d_ue2">User 2 email ID</label><input id="d_ue2" type="email"></div></div>
 <button id="d_g" style="margin-top:16px">Add department</button></div>
-<div class="card">${list.length ? `<div class="tw"><table class="department-table"><tr>${gl ? "<th>College</th>" : ""}<th>Name</th><th>HOD</th><th>Login user</th>${su ? "<th>Action</th>" : ""}</tr>${list.map(d => {
+<div class="card">${list.length ? `<div class="tw"><table class="department-table"><tr>${gl ? "<th>College</th>" : ""}<th>Name</th><th>HOD</th><th>Login user</th>${(su || U.role === 'ca' || hasPerm('dept', 'edit') || hasPerm('dept', 'delete')) ? "<th>Action</th>" : ""}</tr>${list.map(d => {
   const hodU = S.users.find(u => u.dept === d.id && u.role === "hod");
   const deptUsers = S.users.filter(u => u.dept === d.id && u.role === "dept");
-  return `<tr>${gl ? `<td>${esc(cn(d.college))}</td>` : ""}<td><b>${esc(d.name)}</b></td><td>${esc(d.hod || (hodU ? hodU.name : "—"))}${hodU ? `<br><span class="b ok" style="font-size:11px">HOD Login: ${esc(hodU.email)}</span>` : (gl || U.role === "ca" ? `<br><a class="department-assign" href="#/users/assign-hod/${d.id}">Assign HOD</a>` : "")}</td><td>${esc(deptUsers.map(u => u.name).join(", ") || "Not assigned")}${gl || U.role === "ca" ? `<br><a class="department-assign" href="#/users/assign/${d.id}">Assign Staff User</a>` : ""}</td>${su ? `<td class="department-actions"><button class="g sm" onclick="editDept('${d.id}')">Edit</button> <button class="r sm" onclick="delDept('${d.id}')">Delete</button></td>` : ""}</tr>`;
+  return `<tr>${gl ? `<td>${esc(cn(d.college))}</td>` : ""}<td><b>${esc(d.name)}</b></td><td>${esc(d.hod || (hodU ? hodU.name : "—"))}${hodU ? `<br><span class="b ok" style="font-size:11px">HOD Login: ${esc(hodU.email)}</span>` : (gl || U.role === "ca" ? `<br><a class="department-assign" href="#/users/assign-hod/${d.id}">Assign HOD</a>` : "")}</td><td>${esc(deptUsers.map(u => u.name).join(", ") || "Not assigned")}${gl || U.role === "ca" ? `<br><a class="department-assign" href="#/users/assign/${d.id}">Assign Staff User</a>` : ""}</td>${(su || U.role === 'ca' || hasPerm('dept', 'edit') || hasPerm('dept', 'delete')) ? `<td class="department-actions">${(su || (U.role === 'ca' && d.college === U.college) || hasPerm('dept', 'edit')) ? `<button class="g sm" onclick="editDept('${d.id}')">Edit</button>` : ''} ${(su || (U.role === 'ca' && d.college === U.college) || hasPerm('dept', 'delete')) ? `<button class="r sm" onclick="delDept('${d.id}')">Delete</button>` : ''}</td>` : ""}</tr>`;
 }).join("")}</table></div>` : '<div class="empty">No departments yet.</div>'}</div>`;
   if ($("#d_f")) $("#d_f").onchange = e => { location.hash = e.target.value ? "#/depts/college/" + e.target.value : "#/depts" };
   $("#d_g").onclick = async () => {
@@ -865,6 +867,7 @@ window.delUser = (id) => {
 function roles(a, rId) {
   if (a === "edit" && rId) {
     const roleUsers = S.users.filter(u => u.role === rId);
+    const isSystemRole = ["su", "ca", "dean", "hod", "dept"].includes(rId);
 
     const modules = [
       { id: 'college', name: 'College', icon: '🏛️' },
@@ -887,20 +890,29 @@ function roles(a, rId) {
         <label>Role Name</label>
         <div style="display:flex; gap:12px">
           <input id="er_n" value="${esc(RN[rId] || "")}" style="flex:1">
-          <button id="er_s">Update Name & Permissions</button>
+          <button id="er_s">Save Role & Permissions</button>
         </div>
       </div>
       
       <div class="card" style="margin-top:16px; ${rId === 'su' ? 'display:none;' : ''}">
-          <h3 style="margin-top:0; font-size:16px;">Edit Permissions</h3>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+             <div>
+                <h3 style="margin:0; font-size:16px;">Edit Permissions</h3>
+                <p class="s" style="margin:4px 0 0">Configure module capabilities and access levels for this role.</p>
+             </div>
+             <button id="er_s2" class="sm" style="padding:8px 18px;">Save Permissions</button>
+          </div>
           <style>
             .perm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px; }
             .perm-group { border: 1px solid var(--ln); padding: 16px; border-radius: 8px; }
             .perm-group h4 { margin: 0 0 12px 0; font-size: 14px; color: var(--ac); display: flex; align-items: center; gap: 6px; }
-            .perm-item { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 14px; color: var(--mu); }
+            .perm-item { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 14px; color: var(--mu); cursor: pointer; }
             .perm-item input[type="checkbox"] { width: 16px; height: 16px; margin: 0; cursor: pointer; accent-color: var(--gold); }
           </style>
           <div class="perm-grid" id="perm_body">
+          </div>
+          <div style="display:flex; justify-content:flex-end; margin-top:16px; border-top:1px solid var(--ln); padding-top:16px;">
+             <button id="er_s3" style="padding:10px 24px;">Save Permissions</button>
           </div>
       </div>
 
@@ -910,7 +922,7 @@ function roles(a, rId) {
         <div style="display:flex; gap:12px; margin-bottom:16px">
             <select id="er_add_u" style="flex:1">
               <option value="">Select an existing user to assign to this role...</option>
-              ${S.users.filter(u => u.role !== rId).map(u => `<option value="${u.id}">${esc(u.name)} (Currently: ${RN[u.role] || "None"})</option>`).join("")}
+              ${S.users.filter(u => u.role !== rId).map(u => `<option value="${u.id}">${esc(u.name)} (Currently: ${RN[u.role] || "None"}${u.college ? ' · ' + esc(cn(u.college)) : ''})</option>`).join("")}
             </select>
             <button id="er_add_b">Add to Role</button>
         </div>
@@ -919,12 +931,12 @@ function roles(a, rId) {
             <tr>
               <th>Name</th>
               <th>College</th>
-              ${(rId === "dept" || rId === "hod") ? "<th>Department</th>" : ""}
+              ${(rId === "dept" || rId === "hod" || !isSystemRole) ? "<th>Department</th>" : ""}
               <th>Action</th>
             </tr>
             ${roleUsers.length ? roleUsers.map(u => `
               <tr>
-                <td>${esc(u.name)}</td>
+                <td><strong>${esc(u.name)}</strong><br><small style="color:var(--mu)">${esc(u.email || "")}</small></td>
                 <td>
                   ${rId === "su" ? "All Colleges" : `
                     <select onchange="window.updUCol('${u.id}', this.value)">
@@ -933,16 +945,16 @@ function roles(a, rId) {
                     </select>
                   `}
                 </td>
-                ${(rId === "dept" || rId === "hod") ? `
+                ${(rId === "dept" || rId === "hod" || !isSystemRole) ? `
                   <td>
                     <select onchange="window.updUDep('${u.id}', this.value)">
                       <option value="">Not assigned</option>
-                      ${S.depts.filter(d => d.college === u.college).map(d => `<option value="${d.id}" ${u.dept === d.id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}
+                      ${S.depts.filter(d => !u.college || d.college === u.college).map(d => `<option value="${d.id}" ${u.dept === d.id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}
                     </select>
                   </td>
                 ` : ""}
                 <td>
-                   <button class="r sm" onclick="if(confirm('Remove this user from ${esc(RN[rId])} role?')){ S.users.find(x=>x.id==='${u.id}').role = 'NONE'; save(); roles('edit', '${rId}'); }">Remove</button>
+                   <button class="r sm" onclick="if(confirm('Remove this user from ${esc(RN[rId] || rId)} role?')){ S.users.find(x=>x.id==='${u.id}').role = 'NONE'; save(); roles('edit', '${rId}'); }">Remove</button>
                 </td>
               </tr>
             `).join("") : '<tr><td colspan="4" class="s">No users assigned to this role.</td></tr>'}
@@ -1016,20 +1028,40 @@ function roles(a, rId) {
       });
     }
 
-    $("#er_s").onclick = () => {
+    const saveRoleConfig = async () => {
       const nn = $("#er_n").value.trim();
       if (!nn) return alert("Role name required.");
       S.RN[rId] = nn;
       if (rId !== 'su') {
         if (!S.customRoles) S.customRoles = {};
         if (!S.customRoles[rId]) S.customRoles[rId] = { desc: '', perms: {} };
-        S.customRoles[rId].perms = selected;
+        const toSave = JSON.parse(JSON.stringify(selected));
+        if (toSave.college && toSave.college.includes('create')) {
+          if (!toSave.college.includes('edit')) toSave.college.push('edit');
+          if (!toSave.college.includes('delete')) toSave.college.push('delete');
+        }
+        if (toSave.dept && toSave.dept.includes('create')) {
+          if (!toSave.dept.includes('edit')) toSave.dept.push('edit');
+          if (!toSave.dept.includes('delete')) toSave.dept.push('delete');
+        }
+        if (toSave.users && toSave.users.includes('create')) {
+          if (!toSave.users.includes('edit')) toSave.users.push('edit');
+        }
+        if (toSave.events && toSave.events.includes('create')) {
+          if (!toSave.events.includes('edit')) toSave.events.push('edit');
+        }
+        S.customRoles[rId].perms = toSave;
       }
-      save();
+      await save();
       alert("Role updated successfully!");
       route();
     };
-    $("#er_add_b").onclick = () => {
+
+    $("#er_s").onclick = saveRoleConfig;
+    if ($("#er_s2")) $("#er_s2").onclick = saveRoleConfig;
+    if ($("#er_s3")) $("#er_s3").onclick = saveRoleConfig;
+
+    $("#er_add_b").onclick = async () => {
       const uid = $("#er_add_u").value;
       if (!uid) return;
       const u = S.users.find(x => x.id === uid);
@@ -1037,11 +1069,43 @@ function roles(a, rId) {
         u.role = rId;
         if (rId === 'su') { u.college = null; u.dept = null; }
         if (rId === 'ca' || rId === 'dean') { u.dept = null; }
-        save(); roles('edit', rId);
+        if (rId !== 'su') {
+          if (!S.customRoles) S.customRoles = {};
+          if (!S.customRoles[rId]) S.customRoles[rId] = { desc: '', perms: {} };
+          S.customRoles[rId].perms = selected;
+        }
+        await save(); roles('edit', rId);
       }
     };
-    window.updUCol = (uid, cid) => { const u = S.users.find(x => x.id === uid); if (u) { u.college = cid || null; u.dept = null; save(); roles('edit', rId); } };
-    window.updUDep = (uid, did) => { const u = S.users.find(x => x.id === uid); if (u) { u.dept = did || null; save(); roles('edit', rId); } };
+    window.updUCol = async (uid, cid) => {
+      const u = S.users.find(x => x.id === uid);
+      if (u) {
+        u.college = cid || null;
+        u.dept = null;
+        if (rId !== 'su') {
+          if (!S.customRoles) S.customRoles = {};
+          if (!S.customRoles[rId]) S.customRoles[rId] = { desc: '', perms: {} };
+          S.customRoles[rId].perms = selected;
+        }
+        await save(); roles('edit', rId);
+      }
+    };
+    window.updUDep = async (uid, did) => {
+      const u = S.users.find(x => x.id === uid);
+      if (u) {
+        u.dept = did || null;
+        if (rId === "hod" && did) {
+          const depObj = S.depts.find(x => x.id === did);
+          if (depObj) depObj.hod = u.name;
+        }
+        if (rId !== 'su') {
+          if (!S.customRoles) S.customRoles = {};
+          if (!S.customRoles[rId]) S.customRoles[rId] = { desc: '', perms: {} };
+          S.customRoles[rId].perms = selected;
+        }
+        await save(); roles('edit', rId);
+      }
+    };
     return;
   }
 
@@ -1090,7 +1154,6 @@ function roles(a, rId) {
                 </tr>
               </thead>
               <tbody id="perm_body">
-                <!-- rendered by js -->
               </tbody>
             </table>
           </div>
@@ -1113,7 +1176,6 @@ function roles(a, rId) {
           <div style="border-top:1px solid var(--ln); padding-top:16px">
             <div style="font-weight:600; font-size:13px; margin-bottom:12px; color:var(--tx)">Selected Permissions</div>
             <div id="sum_perms" style="display:flex; flex-wrap:wrap; gap:8px;">
-               <!-- rendered by js -->
             </div>
           </div>
         </div>
@@ -1132,7 +1194,6 @@ function roles(a, rId) {
       { id: 'reports', name: 'Reports', icon: '📊' },
     ];
 
-    // Available checkboxes per row based on screenshot
     const allowed = {
       college: ['view', 'create', 'edit', 'delete'],
       dept: ['view', 'create', 'edit', 'delete'],
@@ -1141,7 +1202,6 @@ function roles(a, rId) {
       reports: ['view', 'export', 'submit']
     };
 
-    // Pre-selected default checkboxes (to match screenshot exactly if we want)
     let selected = {
       college: ['view'],
       dept: ['view'],
@@ -1199,22 +1259,52 @@ function roles(a, rId) {
     renderTable();
     updateSummary();
 
-    $("#cr_submit").onclick = () => {
+    $("#cr_submit").onclick = async () => {
       const n = $("#cr_name").value.trim();
       if (!n) return alert("Role name required.");
       const newRoleId = "r_" + uid();
       S.RN[newRoleId] = n;
       if (!S.customRoles) S.customRoles = {};
+      const toSave = JSON.parse(JSON.stringify(selected));
+      if (toSave.college && toSave.college.includes('create')) {
+        if (!toSave.college.includes('edit')) toSave.college.push('edit');
+        if (!toSave.college.includes('delete')) toSave.college.push('delete');
+      }
+      if (toSave.dept && toSave.dept.includes('create')) {
+        if (!toSave.dept.includes('edit')) toSave.dept.push('edit');
+        if (!toSave.dept.includes('delete')) toSave.dept.push('delete');
+      }
+      if (toSave.users && toSave.users.includes('create')) {
+        if (!toSave.users.includes('edit')) toSave.users.push('edit');
+      }
+      if (toSave.events && toSave.events.includes('create')) {
+        if (!toSave.events.includes('edit')) toSave.events.push('edit');
+      }
       S.customRoles[newRoleId] = {
+        name: n,
         desc: $("#cr_desc").value.trim(),
-        perms: selected
+        perms: toSave
       };
-      save();
+      await save();
       location.hash = "#/roles";
       route();
     };
     return;
   }
+
+  window.delRole = async (rId) => {
+    if (['su', 'ca', 'dean', 'hod', 'dept'].includes(rId)) return alert('System default roles cannot be deleted.');
+    const assigned = S.users.filter(u => u.role === rId);
+    const msg = assigned.length ?
+      `There are ${assigned.length} user(s) assigned to "${RN[rId] || rId}". Deleting it will unassign them. Continue?` :
+      `Are you sure you want to delete role "${RN[rId] || rId}"?`;
+    if (!confirm(msg)) return;
+    assigned.forEach(u => u.role = 'NONE');
+    if (S.customRoles) delete S.customRoles[rId];
+    if (S.RN) delete S.RN[rId];
+    await save();
+    route();
+  };
 
   const rolesList = [
     { id: "su", name: RN.su || "University Admin" },
@@ -1226,7 +1316,7 @@ function roles(a, rId) {
   if (S.customRoles) {
     Object.keys(S.customRoles).forEach(k => {
       if (!["su", "ca", "dean", "hod", "dept"].includes(k)) {
-        rolesList.push({ id: k, name: RN[k] || "Custom Role" });
+        rolesList.push({ id: k, name: RN[k] || (S.customRoles[k] && S.customRoles[k].name) || "Custom Role" });
       }
     });
   }
@@ -1257,15 +1347,19 @@ function roles(a, rId) {
   let rows = rolesList.map(r => {
     const roleUsers = S.users.filter(u => u.role === r.id && (u.role !== 'su' || isSU()));
     const roleCols = r.id === "su" ? "ALL" : [...new Set(roleUsers.map(u => u.college).filter(Boolean))].map(cid => S.colleges.find(c => c.id === cid)).filter(Boolean);
+    const isSys = ['su', 'ca', 'dean', 'hod', 'dept'].includes(r.id);
 
     return `
       <tr style="border-bottom: 1px solid var(--ln);">
-        <td style="padding:20px 12px; font-weight:500; color:var(--tx); font-size:15px">${r.name}</td>
+        <td style="padding:20px 12px; font-weight:500; color:var(--tx); font-size:15px">
+          ${esc(r.name)}
+          ${!isSys ? `<br><small style="color:var(--mu); font-weight:normal;">Custom Role</small>` : ''}
+        </td>
        <td style="padding:20px 12px;">${avGroup(roleCols, true)}</td>
        <td style="padding:20px 12px;">${avGroup(roleUsers, false)}</td>
        <td style="padding:20px 12px; text-align:right; white-space:nowrap;">
           <a href="#/roles/edit/${r.id}"><button class="g sm" style="padding:8px 20px; font-weight:600; font-size:13px; border-radius:6px; box-shadow:none;">Edit</button></a>
-          <span style="display:inline-block; margin-left:16px; margin-right:8px; cursor:pointer; color:var(--mu); font-weight:bold; letter-spacing:2px; vertical-align:middle; font-size:20px; line-height:1;">⋮</span>
+          ${!isSys ? `<button class="r sm" style="padding:8px 14px; font-weight:600; font-size:13px; border-radius:6px; margin-left:8px;" onclick="window.delRole('${r.id}')">Delete</button>` : ''}
        </td>
      </tr>
      `;
@@ -1460,7 +1554,7 @@ function users(action, id) {
       const r = $("#eu_r").value;
       const c = gl ? $("#eu_c").value : U.college;
       if ($("#eu_cw")) $("#eu_cw").hidden = !(gl && r !== "su");
-      if ($("#eu_dw")) $("#eu_dw").hidden = (r !== "dept" && r !== "hod" && r !== "ca");
+      if ($("#eu_dw")) $("#eu_dw").hidden = (r === "su" || r === "ca" || r === "dean");
       if ($("#eu_d")) $("#eu_d").innerHTML = `<option value="">Not assigned</option>` +
         S.depts.filter(d => d.college === c).map(d => `<option value="${d.id}" ${u.dept === d.id ? "selected" : ""}>${esc(d.name)}</option>`).join("");
     };
@@ -1553,7 +1647,7 @@ function users(action, id) {
     const r = $("#u_r") ? $("#u_r").value : null;
     const c = gl ? ($("#u_c") ? $("#u_c").value : "") : U.college;
     if ($("#u_cw")) $("#u_cw").hidden = !(gl && r !== "su");
-    if ($("#u_dw")) $("#u_dw").hidden = (r !== "dept" && r !== "hod");
+    if ($("#u_dw")) $("#u_dw").hidden = (r === "su" || r === "ca" || r === "dean");
     if ($("#u_d")) {
       if (!c && gl && r !== "su") {
         $("#u_d").innerHTML = `<option value="">Select College first</option>`;
@@ -1602,6 +1696,7 @@ function users(action, id) {
     const b = $("#u_g");
     b.disabled = true;
     b.textContent = "Creating…";
+    if (r === "hod" && d) { const depObj = S.depts.find(x => x.id === d); if (depObj) depObj.hod = n; }
     S.users.push({ id: uid(), name: n, role: r, college: c, dept: d, email: p.trim().toLowerCase(), pending: true });
     await save();
     users();
@@ -2441,7 +2536,7 @@ ${on ? `<label>College</label><select id="vs_c" onchange="document.getElementByI
 <label>Department</label><select id="vs_d" onchange="setView()"><option value="">All / none</option>${ds.map(d => `<option value="${d.id}" ${U.dept === d.id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select>
 <button class="g sm vs-back" style="margin-top:6px" onclick="sessionStorage.removeItem('acu_view');route()">&larr; Back to Super Admin</button>`: ""}</div>`
 }
-function setView() { const g = i => { const e = document.getElementById(i); return e ? e.value : "" }; const r = g("vs_r"); if (r === "su") sessionStorage.removeItem("acu_view"); else { let c = g("vs_c"), d = g("vs_d"); if (!c && S.colleges.length && r !== "dept") c = S.colleges[0].id; if (d) { const dd = S.depts.find(x => x.id === d); if (dd) c = dd.college } if ((r === "dept" || r === "hod") && !d) { const dd = S.depts.find(x => !c || x.college === c); if (dd) { d = dd.id; c = dd.college } } sessionStorage.setItem("acu_view", JSON.stringify({ role: r, college: c, dept: d })) } location.hash = "#/dash"; route() }
+function setView() { const g = i => { const e = document.getElementById(i); return e ? e.value : "" }; const r = g("vs_r"); if (r === "su") sessionStorage.removeItem("acu_view"); else { let c = g("vs_c"), d = g("vs_d"); if (!c && S.colleges.length && r !== "dept" && r !== "su") c = S.colleges[0].id; if (d) { const dd = S.depts.find(x => x.id === d); if (dd) c = dd.college } if ((r === "dept" || r === "hod") && !d) { const dd = S.depts.find(x => !c || x.college === c); if (dd) { d = dd.id; c = dd.college } } if (r === "ca" || r === "dean") d = null; sessionStorage.setItem("acu_view", JSON.stringify({ role: r, college: c, dept: d })) } location.hash = "#/dash"; route() }
 window.setView = setView;
 
 window.resendInv = async function (btn, id) { btn.disabled = true; btn.textContent = "Sending…"; try { await window.__ACU.resendInvite(id); btn.textContent = "Sent ✓"; setTimeout(() => { btn.disabled = false; btn.textContent = "Resend invite" }, 60000) } catch (e) { alert("Invite link sent successfully"); btn.disabled = false; btn.textContent = "Resend invite" } };
