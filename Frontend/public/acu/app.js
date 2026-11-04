@@ -429,7 +429,19 @@ function route() {
   L.emails = "Email & Invitations";
   $("#nav").innerHTML = T.map(k => `<a href="#/${k}" class="${p[0] === k ? "on" : ""}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="${I[k] || I.dash}"/></svg> ${L[k]}</a>`).join("");
   if (!workflowOn() && (["events", "review"].includes(p[0]))) return workflowUnavailable();
-  const v = T.includes(p[0]) ? p[0] : (p[0] === "events" && workflowOn() ? "events" : T[0]); ({ back: backView, dash, colleges, depts, users, officers, emails: accountEmails, monthly, events, review, reports, templates, analytics, settings, roles, notifications }[v])(p[1], p[2])
+  const allRoutes = { back: backView, dash, colleges, depts, users, officers, emails: accountEmails, monthly, events, review, reports, templates, analytics, settings, roles, notifications };
+  let v = p[0];
+  if (!allRoutes[v]) {
+    v = T[0];
+  } else if (!T.includes(v)) {
+    if (v === "review" && (isSU() || isOfficer() || hasPerm("events", "verify") || hasPerm("events", "approve"))) { /* allow */ }
+    else if (v === "events" && workflowOn()) { /* allow */ }
+    else if (v === "monthly" && (U.role === "ca" || U.role === "dean" || U.role === "hod" || U.role === "dept")) { /* allow */ }
+    else if (v === "notifications" && workflowOn()) { /* allow */ }
+    else if (v === "back" && canBackView()) { /* allow */ }
+    else v = T[0];
+  }
+  allRoutes[v](p[1], p[2]);
 }
 addEventListener("hashchange", route);
 
@@ -1201,6 +1213,7 @@ async function officers(action, id) {
   const pendingIQAC = E.filter(e => e.status === "DAPPROVED" && !isPartEvent(e)).length;
   const pendingResearch = E.filter(e => e.status === "DAPPROVED" && isPartEvent(e)).length;
   const pendingDoc = E.filter(e => e.status === "SUBMITTED").length;
+  const candidateStaff = S.users.filter(u => u.role !== 'su' && !['iqac', 'dean_research', 'doc_officer'].includes(u.role));
 
   let h = `
   <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:8px">
@@ -1240,6 +1253,13 @@ async function officers(action, id) {
           <option value="iqac">Central IQAC — Event Organisation Proposals</option>
           <option value="dean_research">Dean Research, ACU — Academic Participation Proposals</option>
           <option value="doc_officer">Institutional Documentation Officer — Evidence Verification</option>
+        </select>
+      </div>
+      <div>
+        <label for="off_existing">Select Existing Staff Member (Optional)</label>
+        <select id="off_existing">
+          <option value="">-- Or enter new officer details below --</option>
+          ${candidateStaff.map(u => `<option value="${esc(u.id)}">${esc(u.name)} (${esc(u.email || "no email")}) · ${esc(RN[u.role] || u.role)}</option>`).join("")}
         </select>
       </div>
       <div>
@@ -1297,6 +1317,7 @@ async function officers(action, id) {
                   <td><span class="b ${u.pending ? 'wa' : 'ok'}">${u.pending ? 'Pending Invite' : 'Active'}</span></td>
                   <td style="white-space:nowrap">
                     <button class="sm" onclick="sessionStorage.setItem('acu_view', JSON.stringify({ role: '${u.role}', college: null, dept: null })); location.hash = '#/dash'; route()">Switch View →</button>
+                    ${u.pending ? `<button class="g sm" onclick="resendOfficerInv(this,'${u.id}')" style="margin-left:4px">Resend Invite</button>` : ''}
                     <button class="r sm" onclick="removeOfficer('${u.id}')" style="margin-left:4px">Unassign</button>
                   </td>
                 </tr>
@@ -1311,6 +1332,17 @@ async function officers(action, id) {
 
   $("#app").innerHTML = h;
 
+  if ($("#off_existing")) {
+    $("#off_existing").onchange = e => {
+      const sel = S.users.find(u => u.id === e.target.value);
+      if (sel) {
+        $("#off_name").value = sel.name || "";
+        $("#off_email").value = sel.email || "";
+        $("#off_desig").value = sel.designation || RN[sel.role] || "";
+      }
+    };
+  }
+
   $("#off_save").onclick = async () => {
     const role = $("#off_role").value;
     const name = $("#off_name").value.trim();
@@ -1324,29 +1356,34 @@ async function officers(action, id) {
     btn.disabled = true;
     btn.textContent = "Assigning...";
 
-    let existing = S.users.find(u => (u.email || "").toLowerCase() === email);
-    if (existing) {
-      existing.role = role;
-      existing.name = name;
-      existing.college = null;
-      existing.dept = null;
-      existing.designation = desig || existing.designation || RN[role];
-    } else {
-      S.users.push({
-        id: uid(),
-        name,
-        email,
-        role,
-        college: null,
-        dept: null,
-        designation: desig || RN[role],
-        pending: true
-      });
-    }
+    try {
+      let existing = S.users.find(u => (u.email || "").toLowerCase() === email);
+      if (existing) {
+        existing.role = role;
+        existing.name = name;
+        existing.college = null;
+        existing.dept = null;
+        existing.designation = desig || existing.designation || RN[role];
+      } else {
+        S.users.push({
+          id: uid(),
+          name,
+          email,
+          role,
+          college: null,
+          dept: null,
+          designation: desig || RN[role],
+          pending: true
+        });
+      }
 
-    await save();
-    alert(`Success: ${name} (${email}) has been assigned to ${RN[role]}.`);
-    officers();
+      await save();
+      alert(`Success: ${name} (${email}) has been assigned to ${RN[role]}.`);
+    } catch (err) {
+      alert("Could not assign officer: " + (err?.message || err));
+    } finally {
+      officers();
+    }
   };
 }
 
@@ -1354,10 +1391,33 @@ window.removeOfficer = async function(id) {
   const u = S.users.find(x => x.id === id);
   if (!u) return;
   if (!confirm(`Are you sure you want to unassign ${u.name} from ${RN[u.role] || u.role}?`)) return;
-  u.role = "dept";
-  await save();
-  alert(`${u.name} unassigned from officer role.`);
-  officers();
+  u.role = "NONE";
+  u.college = null;
+  u.dept = null;
+  try {
+    await save();
+    alert(`${u.name} unassigned from officer role.`);
+  } catch (err) {
+    alert("Could not unassign officer: " + (err?.message || err));
+  } finally {
+    officers();
+  }
+};
+
+window.resendOfficerInv = async function(btn, id) {
+  const u = S.users.find(x => x.id === id);
+  if (!u) return;
+  btn.disabled = true;
+  btn.textContent = "Sending...";
+  try {
+    await window.__ACU.resendInvite(id);
+    alert(`Activation email sent to ${u.email}.`);
+  } catch (err) {
+    alert("Could not send activation email: " + (err?.message || err));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Resend Invite";
+  }
 };
 
 function dash() {
@@ -2544,12 +2604,17 @@ ${!rs.length && !z ? `<div class="card"><h3>No activity this ${cyclePeriod()}</h
     if (hk === "evo") {
       fe.recId = rec.id;
       fe.status = "SUBMITTED";
+      fe.submittedAt = new Date().toISOString();
       fe.comp = { count: +(d["Number of Participants"] || 0), date: fe.date };
       fe.hist.push([new Date().toISOString(), "Event Organize report " + (ed ? "resubmitted" : "submitted") + " by " + U.name]);
+      sendNotice({ event: fe, status: "SUBMITTED", title: "Completion Report Submitted", message: `${fe.title}: Event Organize report submitted by ${U.name}. Awaiting evidence verification.` });
       EVU = null;
     } else if (hk === "part") {
       fe.partRecId = rec.id;
+      fe.status = "SUBMITTED";
+      fe.submittedAt = new Date().toISOString();
       fe.hist.push([new Date().toISOString(), "Participation Details report " + (ed ? "resubmitted" : "submitted") + " by " + U.name]);
+      sendNotice({ event: fe, status: "SUBMITTED", title: "Participation Report Submitted", message: `${fe.title}: Participation Details report submitted by ${U.name}. Awaiting evidence verification.` });
       EVU = null;
     }
     await save();
@@ -2565,7 +2630,13 @@ ${!rs.length && !z ? `<div class="card"><h3>No activity this ${cyclePeriod()}</h
     const v = $("#g_id").value.trim().toUpperCase(), o = $("#g_out"); if (!v) return;
     const e = S.events.find(x => (x.num || "").toUpperCase() === v && x.dept === D.id);
     if (!e) { o.innerHTML = '<div class="note er">Approval ID not found for your department.</div>'; return; }
-    const m = { PENDING: "This Approval ID is still awaiting College Dean approval.", DAPPROVED: "This Approval ID is awaiting University Admin final approval.", RETURNED: "This approval was returned for correction. Correct and resubmit the approval form first.", REJECTED: "This approval was rejected. Report submission is not allowed." }[e.status];
+    const m = {
+      PENDING: "This Approval ID is awaiting Department HOD review.",
+      HOD_APPROVED: "This Approval ID is approved by HOD and awaiting College Dean / Principal approval.",
+      DAPPROVED: isPartEvent(e) ? "This Approval ID is awaiting Dean Research, ACU final authorisation." : "This Approval ID is awaiting Central IQAC final authorisation.",
+      RETURNED: "This approval was returned for correction. Correct and resubmit the approval form first.",
+      REJECTED: "This approval was rejected. Report submission is not allowed."
+    }[e.status];
     if (m) { o.innerHTML = `<div class="note er">${m}</div>`; return; }
     EVU = e.id;
     setM(dateToM(e.date));
@@ -2801,13 +2872,13 @@ ${articlePreview(e)}
 }
 function dRows() {
   const E = myEv().filter(e => e.date === DD), ap = ["APPROVED", "SUBMITTED", "CRETURNED", "COMPLETED"];
-  const R = E.map(e => [e, ap.includes(e.status) ? "Approved" : e.status === "PENDING" ? "Pending" : ST[e.status][0], e.comp ? "Submitted" : e.status === "APPROVED" && DD <= today() ? "Missing" : "—", e.status === "COMPLETED" ? "Verified" : e.status === "SUBMITTED" ? "Pending" : e.status === "CRETURNED" ? "Returned" : "—"]);
+  const R = E.map(e => [e, ap.includes(e.status) ? "Approved" : e.status === "PENDING" ? "Pending" : (ST[e.status] ? ST[e.status][0] : e.status || "—"), e.comp ? "Submitted" : e.status === "APPROVED" && DD <= today() ? "Missing" : "—", e.status === "COMPLETED" ? "Verified" : e.status === "SUBMITTED" ? "Pending" : e.status === "CRETURNED" ? "Returned" : "—"]);
   window._dcsv = [["Event ID", "College", "Department", "Event", "Approval", "Completion", "Verification"], ...R.map(r => [r[0].num, cn((S.depts.find(d => d.id === r[0].dept) || {}).college), dn(r[0].dept), r[0].title, r[1], r[2], r[3]])].map(r => r.map(x => '"' + String(x).replace(/"/g, '""') + '"').join(",")).join("\n"); return R
 }
 function analytics() {
   const E = myEv(), D = myDepts(), n = k => E.filter(e => e.status === k).length, pc = (a, b) => b ? Math.round(a / b * 100) + "%" : "—";
   const ap = E.filter(e => ["APPROVED", "SUBMITTED", "CRETURNED", "COMPLETED"].includes(e.status)).length, cs = E.filter(e => e.comp).length, R = S.recs.filter(r => D.some(d => d.id === r.dept)), ms = [...new Set(R.map(r => r.month))].sort();
-  window._ecsv = [["Event ID", "College", "Department", "Event", "Date", "Status"], ...E.map(e => [e.num, cn((S.depts.find(d => d.id === e.dept) || {}).college), dn(e.dept), e.title, e.date, ST[e.status][0]])].map(r => r.map(x => '"' + String(x).replace(/"/g, '""') + '"').join(",")).join("\n");
+  window._ecsv = [["Event ID", "College", "Department", "Event", "Date", "Status"], ...E.map(e => [e.num, cn((S.depts.find(d => d.id === e.dept) || {}).college), dn(e.dept), e.title, e.date, ST[e.status] ? ST[e.status][0] : e.status || "—"])].map(r => r.map(x => '"' + String(x).replace(/"/g, '""') + '"').join(",")).join("\n");
   window._rcsv = [["College", "Department", "Month", "Heading", "Details"], ...R.map(r => [cn(r.college), dn(r.dept), r.month, (H.find(h => h[0] === r.head) || [])[1], Object.entries(r.data).filter(x => x[1]).map(x => x.join(": ")).join("; ")])].map(r => r.map(x => '"' + String(x).replace(/"/g, '""') + '"').join(",")).join("\n");
   $("#app").innerHTML = `<h2>Analytics &amp; export</h2><p class="s">Computed only from records entered in this system.</p><div class="noprint"><button class="g" id="x1" ${workflowOn() ? "" : "hidden"}>Copy all events (CSV)</button> <button class="g" id="x2">Copy all reporting records (CSV)</button></div>
 <div class="card" style="margin-top:12px" ${workflowOn() ? "" : "hidden"}><h3>Event pipeline</h3><div class="tw"><table><tr><th>Stage</th><th>Count</th><th>Of previous stage</th></tr><tr><td>Events submitted</td><td>${E.length}</td><td>—</td></tr><tr><td>Approved (or later)</td><td>${ap}</td><td>${pc(ap, E.length)}</td></tr><tr><td>Event Organize report filed</td><td>${cs}</td><td>${pc(cs, ap)}</td></tr><tr><td>Verified</td><td>${n("COMPLETED")}</td><td>${pc(n("COMPLETED"), cs)}</td></tr></table></div><p class="lg">Returned: ${n("RETURNED") + n("CRETURNED")} · Rejected: ${n("REJECTED")}</p></div>
@@ -2989,7 +3060,7 @@ function dec(id, s) {
   window.REVIEW_OPEN = null; save(); review();
 }
 function notifications() {
-  const N = S.notifications || [], me = window.__ACU.uid;
+  const N = (S.notifications || []).filter(isNoticeForMe), me = window.__ACU.uid;
   $("#app").innerHTML = `<h2>Approval notices</h2><p class="s">A notice is sent only to the college that submitted the event.</p>` +
     (N.length ? `<div class="card"><div class="tw"><table><tr><th>Event ID</th><th>Event</th><th>Status</th><th>Notice</th><th>Approval date</th><th></th></tr>${N.map(n => `<tr><td><a href="#/events/view/${esc(n.event_id)}"><code>${esc(n.event_num)}</code></a></td><td>${esc(n.event_title)}</td><td><span class="b ok">${esc(n.status)}</span></td><td>${esc(n.message)}</td><td>${String(n.created_at || "").slice(0, 16).replace("T", " ")}</td><td>${(n.read_by || []).includes(me) ? '<span class="ok">Read</span>' : `<button class="g sm" onclick="readNotice('${esc(n.id)}')">Mark as read</button>`}</td></tr>`).join("")}</table></div></div>` : '<div class="card empty">No notices yet.</div>');
 }
@@ -3333,7 +3404,7 @@ function backSubmissions() {
   $("#bp-size").onchange = ev => { f.size = +ev.target.value; f.page = 1; go() };
   $("#bf-csv").onclick = () => {
     const q = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const rows = [["Event Title", "Approval ID", "Department", "Institution", "Event Date", "Submitter", "Email", "Submitted Date", "Status", "Published Status", "Website URL"], ...all.map(x => [x.e.title, x.e.num, dn(x.e.dept), cn(x.college), x.e.date, x.by, x.email, x.subAt, ST[x.e.status][0], x.web, x.e.websiteUrl || ""])];
+    const rows = [["Event Title", "Approval ID", "Department", "Institution", "Event Date", "Submitter", "Email", "Submitted Date", "Status", "Published Status", "Website URL"], ...all.map(x => [x.e.title, x.e.num, dn(x.e.dept), cn(x.college), x.e.date, x.by, x.email, x.subAt, (ST[x.e.status] ? ST[x.e.status][0] : x.e.status || "—"), x.web, x.e.websiteUrl || ""])];
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + rows.map(r => r.map(q).join(",")).join("\r\n")], { type: "text/csv" })); a.download = `submissions-${new Date().toISOString().slice(0, 10)}.csv`; a.click(); bvLog("Submissions Exported", `${all.length} rows exported to CSV`); bvToast("CSV exported.");
   };
 }

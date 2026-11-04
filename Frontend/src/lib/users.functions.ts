@@ -229,8 +229,8 @@ export const syncUsers = createServerFn({ method: "POST" })
     };
 
     for (const c of data.creates) {
-      let college = c.role === "su" ? null : (c.college || null);
-      let dept = c.dept || null;
+      let college = (c.role === "su" || ["iqac", "dean_research", "doc_officer"].includes(c.role)) ? null : (c.college || null);
+      let dept = ["su", "iqac", "dean_research", "doc_officer"].includes(c.role) ? null : (c.dept || null);
       if (c.role === "dept" || c.role === "hod") {
         const resolved = await resolveDepartmentAndCollege(college, dept, c.deptName);
         college = resolved.collegeId;
@@ -265,7 +265,7 @@ export const syncUsers = createServerFn({ method: "POST" })
         name: c.name,
         email: c.email.toLowerCase(),
         college_id: college,
-        dept_id: c.role === "su" ? null : dept,
+        dept_id: dept,
       });
       const { error: removeRoleError } = await supabaseAdmin.from("user_roles").delete().eq("user_id", userId);
       const { error: roleError } = await supabaseAdmin.from("user_roles").insert({ user_id: userId, role: c.role });
@@ -349,8 +349,8 @@ export const syncUsers = createServerFn({ method: "POST" })
     for (const u of data.updates) {
       const t = await loadTarget(u.id);
       if (!t) continue;
-      let college = u.role === "su" ? null : (u.college || null);
-      let dept = u.dept || null;
+      let college = (u.role === "su" || ["iqac", "dean_research", "doc_officer"].includes(u.role)) ? null : (u.college || null);
+      let dept = ["su", "iqac", "dean_research", "doc_officer"].includes(u.role) ? null : (u.dept || null);
       if (u.role === "dept" || u.role === "hod") {
         const resolved = await resolveDepartmentAndCollege(college, dept, u.deptName);
         college = resolved.collegeId;
@@ -367,7 +367,7 @@ export const syncUsers = createServerFn({ method: "POST" })
       try { await validateDepartment(u.role, college, dept, u.id) } catch (error) { errors.push(`${u.name}: ${(error as Error).message}`); continue }
       const { error: updateError } = await supabaseAdmin
         .from("profiles")
-        .update({ name: u.name, college_id: college, dept_id: u.role === "su" ? null : dept })
+        .update({ name: u.name, college_id: college, dept_id: dept })
         .eq("id", u.id);
       if (updateError) { errors.push(`${u.name}: assignment could not be saved.`); continue }
       const { error: removeError } = await supabaseAdmin.from("user_roles").delete().eq("user_id", u.id);
