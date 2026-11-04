@@ -1,6 +1,6 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { ArrowLeft, CalendarDays, Printer } from "lucide-react";
+import { ArrowLeft, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { eventDate, eventResourcesQuery, type EventResource } from "@/lib/event-resources";
 
@@ -32,12 +32,11 @@ function EventResourceView() {
   if (!event) return <Unavailable message="This event is not available for public viewing." />;
   return <main className="digiverse-home min-h-screen bg-background text-foreground">
     <header className="border-b border-border px-6 py-6 sm:px-12 lg:px-20"><Button asChild variant="ghost"><Link to="/"><ArrowLeft />ACU DigiVerse</Link></Button></header>
-    <section className="border-b-4 border-accent bg-primary px-6 py-12 text-primary-foreground sm:px-12 lg:px-20 lg:py-16"><p className="mb-5 text-sm uppercase">Event Resources · {event.status === "COMPLETED" ? "Completed" : "Approved"}</p><h1 className="max-w-5xl break-words text-3xl leading-tight sm:text-5xl">{event.title}</h1><p className="mt-6 flex items-center gap-3"><CalendarDays className="size-5" />{eventDate(event.event_date)}</p></section>
+    <section className="border-b-4 border-accent bg-primary px-6 py-12 text-primary-foreground sm:px-12 lg:px-20 lg:py-16"><p className="mb-5 text-sm uppercase">Event Resources</p><h1 className="max-w-5xl break-words text-3xl leading-tight sm:text-5xl">{event.title}</h1><p className="mt-6 flex items-center gap-3"><CalendarDays className="size-5" />{eventDate(event.event_date)}</p></section>
     <section className="px-6 py-12 sm:px-12 lg:px-20">
       <div className="mx-auto max-w-4xl border border-border bg-card text-card-foreground shadow-sm">
-        <div className="flex flex-wrap items-end justify-between gap-4 border-b-2 border-primary px-5 py-5 sm:px-8">
+        <div className="border-b-2 border-primary px-5 py-5 sm:px-8">
           <div><p className="text-xs font-semibold uppercase text-secondary">ACU DigiVerse</p><h2 className="mt-1 text-xl text-primary sm:text-2xl">Event Information Form</h2></div>
-          <div className="flex items-center gap-3"><span className="border border-accent px-3 py-1 text-xs font-semibold uppercase">{event.status === "COMPLETED" ? "Completed" : "Approved"}</span><Button variant="outline" size="sm" className="print:hidden" onClick={() => window.print()}><Printer />Print</Button></div>
         </div>
         {formSections(event).map(section => <fieldset key={section.title} className="border-b border-border px-5 py-6 last:border-b-0 sm:px-8">
           <legend className="sr-only">{section.title}</legend>

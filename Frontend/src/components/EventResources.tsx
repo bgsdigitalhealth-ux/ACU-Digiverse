@@ -29,7 +29,7 @@ export function EventResources() {
         <div aria-roledescription="carousel" aria-label="Approved event resources">
           <article key={event.id} className="heritage-resource event-slide relative min-h-56 bg-background p-5 sm:p-6" aria-roledescription="slide">
             <div className="mb-4 flex items-center justify-between gap-4">
-              <span className="text-xs font-semibold uppercase text-secondary">{event.event_type || "University event"} · {event.status === "COMPLETED" ? "Completed" : "Approved"}</span>
+              <span className="text-xs font-semibold uppercase text-secondary">{event.event_type || "University event"}</span>
               <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
                 <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="Event menu" title="Event menu"><MoreHorizontal /></Button></DropdownMenuTrigger>
                 <DropdownMenuContent align="end"><DropdownMenuItem asChild><Link to="/event-resources/$eventId" params={{ eventId: event.id }}><Eye />View event</Link></DropdownMenuItem></DropdownMenuContent>
