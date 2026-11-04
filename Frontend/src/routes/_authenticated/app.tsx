@@ -38,7 +38,7 @@ function AcuApp() {
         setImportable(!!global && !!localStorage.getItem("acu_v2") && !localStorage.getItem("acu_v2_imported"));
         if (!document.querySelector("script[data-acu-app]")) {
           const s = document.createElement("script");
-          s.src = "/acu/app.js?v=20261104-all-dashboards-login-ready";
+          s.src = "/acu/app.js?v=20261104-pristine-clean";
           s.async = false;
           s.setAttribute("data-acu-app", "1");
           document.body.appendChild(s);
