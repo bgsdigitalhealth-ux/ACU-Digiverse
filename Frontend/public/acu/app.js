@@ -132,6 +132,19 @@ const isPendingUniv = e => !e ? false : (e.status === "DAPPROVED");
 const isPendingVer = e => !e ? false : (e.status === "SUBMITTED");
 const approvalStage = s => (s === "PENDING" ? "hod" : s === "HOD_APPROVED" ? "dean" : s === "DAPPROVED" ? "university" : null);
 
+// Helper to determine if an event is an Academic Participation event (Dean Research) vs Event Organization (Central IQAC)
+const isPartEvent = e => {
+  if (!e) return false;
+  if (e.isPart === true || e.isPart === "true" || e.isPart === 1) return true;
+  if (e.category === "part" || e.head === "part") return true;
+  if (e.partType) return true;
+  const num = String(e.num || "").toUpperCase();
+  if (num.startsWith("PART") || num.includes("/PART/") || num.includes("PART")) return true;
+  const title = String(e.title || "").toLowerCase();
+  const type = String(e.type || "").toLowerCase();
+  return type.includes("participation") || title.includes("participation");
+};
+
 // Three-level approval order: Department HOD -> College Dean / Principal -> University Authorisation (Central IQAC / Dean Research).
 const eCollege = e => (S.depts.find(d => deptMatches(d, e && e.dept)) || {}).college || (e && e.college) || null;
 const isDeanOf = e => !!U && (U.role === "dean" || U.role === "ca") && !!eCollege(e) && colMatches({ id: U.college }, eCollege(e));
@@ -143,9 +156,9 @@ const canDecide = (e, d) => {
   if (!st) return false;
   const isPart = isPartEvent(e);
 
-  // Stage 1: Department HOD Review (PENDING -> HOD_APPROVED)
+  // Stage 1: Department HOD Review (PENDING -> HOD_APPROVED or DAPPROVED)
   if (st === "hod") {
-    const isHod = isHodOf(e) || isSU();
+    const isHod = isHodOf(e) || isSU() || isDeanOf(e);
     if (!isHod) return false;
     if (d === "HOD_APPROVED" || d === "DAPPROVED") return true;
     if (d === "RETURNED" || d === "REJECTED") return true;
@@ -217,12 +230,62 @@ function isNoticeForMe(n) {
 
 const unreadNotices = () => (S.notifications || []).filter(n => isNoticeForMe(n) && !(n.read_by || []).includes(window.__ACU.uid)).length;
 const notifBell = () => { const c = unreadNotices(); return `<a class="acu-bell${c ? " has" : ""}" href="#/notifications" title="Approval notices"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>${c ? `<span>${c}</span>` : ""}</a>` };
-if (!S.RN) S.RN = { su: "University Admin", ca: "College Admin", dean: "Dean / Principal", hod: "Head of Department (HOD)", dept: "Department User", iqac: "Central IQAC", dean_research: "Dean Research, ACU", doc_officer: "Institutional Documentation Officer" };
-S.RN.hod = "Head of Department (HOD)";
-S.RN.iqac = "Central IQAC";
-S.RN.dean_research = "Dean Research, ACU";
-S.RN.doc_officer = "Institutional Documentation Officer";
+const CANONICAL_ROLES = {
+  su: "University Admin",
+  ca: "College Admin",
+  dean: "Dean / Principal",
+  hod: "Head of Department (HOD)",
+  dept: "Department User",
+  iqac: "Central IQAC",
+  dean_research: "Dean Research, ACU",
+  doc_officer: "Institutional Documentation Officer"
+};
+
+if (!S.RN) S.RN = Object.assign({}, CANONICAL_ROLES);
+Object.assign(S.RN, CANONICAL_ROLES);
 const RN = S.RN;
+
+function getDeduplicatedRoles(filterType) {
+  const base = [
+    { id: "su", name: CANONICAL_ROLES.su },
+    { id: "ca", name: CANONICAL_ROLES.ca },
+    { id: "dean", name: CANONICAL_ROLES.dean },
+    { id: "hod", name: CANONICAL_ROLES.hod },
+    { id: "dept", name: CANONICAL_ROLES.dept },
+    { id: "iqac", name: CANONICAL_ROLES.iqac },
+    { id: "dean_research", name: CANONICAL_ROLES.dean_research },
+    { id: "doc_officer", name: CANONICAL_ROLES.doc_officer }
+  ];
+  const seenIds = new Set(base.map(r => r.id));
+  const seenNames = new Set(base.map(r => r.name.toLowerCase()));
+
+  if (S.customRoles) {
+    Object.keys(S.customRoles).forEach(k => {
+      if (seenIds.has(k)) return;
+      const raw = S.RN[k] || S.customRoles[k]?.desc || k;
+      const norm = String(raw).trim().toLowerCase();
+      // Skip aliases or duplicate officer/system names
+      if (norm.includes("iqac") || norm.includes("dean research") || norm.includes("documentation officer") || norm.includes("institutional reporting") || norm === "dean" || norm === "principal" || norm === "hod") {
+        return;
+      }
+      if (!seenNames.has(norm)) {
+        seenNames.add(norm);
+        seenIds.add(k);
+        base.push({ id: k, name: String(raw).trim() });
+      }
+    });
+  }
+
+  if (filterType === "users") {
+    // Only college/dept accounts in regular Users manager
+    return base.filter(r => !['su', 'iqac', 'dean_research', 'doc_officer'].includes(r.id));
+  }
+  if (filterType === "officers") {
+    // Specialized university authority roles
+    return base.filter(r => ['iqac', 'dean_research', 'doc_officer'].includes(r.id));
+  }
+  return base;
+}
 
 const isSU = () => U && U.role === 'su';
 const isIQAC = () => !!U && (U.role === 'iqac' || (S.RN && String(S.RN[U.role] || "").toLowerCase().includes("iqac")));
@@ -261,7 +324,21 @@ const myCols = () => {
 };
 const workflowOn = () => S.eventWorkflowEnabled === true;
 const workflowUnavailable = () => { $("#app").innerHTML = '<h2>Feature unavailable</h2><p class="s">This feature is currently turned off.</p>'; };
-const myEv = () => { if (!workflowOn()) return []; const ids = myDepts().map(d => d.id); return S.events.filter(e => ids.includes(e.dept)) };
+const myEv = () => {
+  if (!workflowOn()) return [];
+  if (isGlobal() || isOfficer()) return S.events;
+  const D = myDepts();
+  return S.events.filter(e => {
+    if (!e) return false;
+    if (U.dept && deptMatches({ id: U.dept }, e.dept)) return true;
+    if (U.college) {
+      if (e.college && colMatches({ id: U.college }, e.college)) return true;
+      const ec = eCollege(e);
+      if (ec && colMatches({ id: U.college }, ec)) return true;
+    }
+    return D.some(d => deptMatches(d, e.dept));
+  });
+};
 const badge = (s, e) => {
   if (e && isPendingDean(e)) return `<span class="b wa">Pending Dean/Principal Approval</span>`;
   if (e && isPendingHOD(e)) return `<span class="b wa">Pending HOD Approval</span>`;
@@ -278,13 +355,21 @@ const cycleName = () => S.reportCycle.charAt(0).toUpperCase() + S.reportCycle.sl
 const cyclePeriod = () => S.reportCycle === 'yearly' ? 'year' : S.reportCycle === 'weekly' ? 'week' : 'month';
 
 if (!S.customRoles) S.customRoles = {};
-if (!S.customRoles['ca']) S.customRoles['ca'] = { desc: 'College Administrator', perms: { college: [], dept: ['view', 'create', 'edit', 'delete'], users: ['view', 'create', 'delete'], events: ['view', 'create', 'edit', 'delete', 'verify', 'approve'], reports: ['view', 'export', 'submit'] } };
-if (!S.customRoles['dean']) S.customRoles['dean'] = { desc: 'Dean / Principal', perms: { college: [], dept: ['view', 'create', 'edit', 'delete'], users: [], events: ['view', 'create', 'edit', 'delete', 'verify', 'approve'], reports: ['view', 'export', 'submit'] } };
+if (!S.customRoles['ca']) S.customRoles['ca'] = { desc: 'College Administrator', perms: {} };
+if (!S.customRoles['ca'].perms) S.customRoles['ca'].perms = {};
+S.customRoles['ca'].perms.events = ['view', 'create', 'edit', 'delete', 'verify', 'approve'];
+if (!S.customRoles['ca'].perms.reports) S.customRoles['ca'].perms.reports = ['view', 'export', 'submit'];
+
+if (!S.customRoles['dean']) S.customRoles['dean'] = { desc: 'Dean / Principal', perms: {} };
+if (!S.customRoles['dean'].perms) S.customRoles['dean'].perms = {};
+S.customRoles['dean'].perms.events = ['view', 'create', 'edit', 'delete', 'verify', 'approve'];
+if (!S.customRoles['dean'].perms.reports) S.customRoles['dean'].perms.reports = ['view', 'export', 'submit'];
+
 if (!S.customRoles['hod']) S.customRoles['hod'] = { desc: 'Head of Department (HOD)', perms: { college: ['view'], dept: ['view'], users: ['view'], events: ['view', 'create', 'edit', 'verify', 'approve'], reports: ['view', 'export'] } };
 if (!S.customRoles['dept']) S.customRoles['dept'] = { desc: 'Department User', perms: { college: [], dept: [], users: [], events: ['view', 'create', 'edit', 'delete'], reports: ['view', 'export', 'submit'] } };
-S.customRoles['iqac'] = { desc: 'Central IQAC', perms: { college: [], dept: [], users: [], events: ['view', 'verify', 'approve'], reports: ['view'] } };
-S.customRoles['dean_research'] = { desc: 'Dean Research, ACU', perms: { college: [], dept: [], users: [], events: ['view', 'verify', 'approve'], reports: ['view'] } };
-S.customRoles['doc_officer'] = { desc: 'Institutional Documentation Officer', perms: { college: [], dept: [], users: [], events: ['view', 'verify'], reports: ['view'] } };
+S.customRoles['iqac'] = { desc: 'Central IQAC', perms: { college: [], dept: [], users: [], events: ['view', 'verify', 'approve'], reports: ['view', 'export'] } };
+S.customRoles['dean_research'] = { desc: 'Dean Research, ACU', perms: { college: [], dept: [], users: [], events: ['view', 'verify', 'approve'], reports: ['view', 'export'] } };
+S.customRoles['doc_officer'] = { desc: 'Institutional Documentation Officer', perms: { college: [], dept: [], users: [], events: ['view', 'verify'], reports: ['view', 'export'] } };
 
 const canBackView = () => {
   const R = window.REALU;
@@ -368,12 +453,14 @@ function route() {
     T = ["dash", "colleges", "depts", "users", "officers", "emails", "roles", "analytics", "reports", "settings"];
     if (workflowOn()) T.push("notifications");
   } else if (isOfficer()) {
-    // Strictly the dedicated dashboard + 4 core tools for the university authorities:
-    // 1. Approvals & verification (review)
-    // 2. Event reporting (events)
-    // 3. Reports (reports)
-    // 4. Notices (notifications)
-    T = ["dash", "review", "events", "reports"];
+    // Strictly the dedicated dashboard + 5 core tools for the specialized university authorities:
+    // 1. Dedicated Dashboard (dash)
+    // 2. Approvals & verification (review)
+    // 3. Event reporting (events)
+    // 4. Analytics & export (analytics)
+    // 5. Reports (reports)
+    // 6. Notices (notifications)
+    T = ["dash", "review", "events", "analytics", "reports"];
     if (workflowOn()) T.push("notifications");
   } else {
     T.push("dash");
@@ -381,7 +468,8 @@ function route() {
     if (perms.college && perms.college.includes("view")) T.push("colleges");
     if (perms.dept && perms.dept.includes("view")) T.push("depts");
     if (perms.users && perms.users.includes("view")) T.push("users");
-    if (perms.events && (perms.events.includes("verify") || perms.events.includes("approve"))) T.push("review");
+    // ALWAYS provide Approvals & Verification for Dean / Principal, College Admin and HOD
+    if (U.role === "dean" || U.role === "ca" || U.role === "hod" || (perms.events && (perms.events.includes("verify") || perms.events.includes("approve")))) T.push("review");
     if (perms.events && (perms.events.includes("view") || perms.events.includes("create"))) T.push("events");
     if (perms.reports && perms.reports.includes("submit") && !['hod', 'dean', 'iqac', 'dean_research', 'doc_officer'].includes(U.role)) T.push("monthly");
     if (perms.reports && perms.reports.includes("export")) T.push("analytics");
@@ -434,7 +522,7 @@ function route() {
   if (!allRoutes[v]) {
     v = T[0];
   } else if (!T.includes(v)) {
-    if (v === "review" && (isSU() || isOfficer() || hasPerm("events", "verify") || hasPerm("events", "approve"))) { /* allow */ }
+    if (v === "review" && (isSU() || isOfficer() || U.role === "dean" || U.role === "ca" || U.role === "hod" || hasPerm("events", "verify") || hasPerm("events", "approve"))) { /* allow */ }
     else if (v === "events" && workflowOn()) { /* allow */ }
     else if (v === "monthly" && (U.role === "ca" || U.role === "dean" || U.role === "hod" || U.role === "dept")) { /* allow */ }
     else if (v === "notifications" && workflowOn()) { /* allow */ }
@@ -557,12 +645,11 @@ function login() {
   const logoSVG = `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`;
 
   let uOpts = '';
-  const rolesList = ['su', 'ca', 'dean', 'dept', ...(S.customRoles ? Object.keys(S.customRoles) : [])];
-  const uniqueRoles = [...new Set(rolesList)];
+  const uniqueRoles = getDeduplicatedRoles();
   uniqueRoles.forEach(r => {
-    const ru = S.users.filter(u => u.role === r);
+    const ru = S.users.filter(u => u.role === r.id);
     if (ru.length) {
-      uOpts += `<optgroup label="${esc(RN[r] || r)}">${ru.map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join("")}</optgroup>`;
+      uOpts += `<optgroup label="${esc(r.name)}">${ru.map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join("")}</optgroup>`;
     }
   });
 
@@ -919,6 +1006,7 @@ function iqacDash() {
     <div class="noprint" style="display:flex;gap:8px;flex-wrap:wrap">
       <a href="#/review"><button class="sm">Open Approvals &amp; Verification (${orgPending.length}) →</button></a>
       <a href="#/events"><button class="g sm">Event Reporting →</button></a>
+      <a href="#/analytics"><button class="g sm">Analytics &amp; Export →</button></a>
       <a href="#/reports"><button class="g sm">Reports →</button></a>
       <a href="#/notifications"><button class="g sm">Approval Notices →</button></a>
     </div>
@@ -1019,6 +1107,7 @@ function deanResearchDash() {
     <div class="noprint" style="display:flex;gap:8px;flex-wrap:wrap">
       <a href="#/review"><button class="sm">Open Approvals &amp; Verification (${partPending.length}) →</button></a>
       <a href="#/events"><button class="g sm">Academic Participations →</button></a>
+      <a href="#/analytics"><button class="g sm">Analytics &amp; Export →</button></a>
       <a href="#/reports"><button class="g sm">Reports →</button></a>
       <a href="#/notifications"><button class="g sm">Approval Notices →</button></a>
     </div>
@@ -1121,6 +1210,7 @@ function docOfficerDash() {
     <div class="noprint" style="display:flex;gap:8px;flex-wrap:wrap">
       <a href="#/review"><button class="sm">Open Approvals &amp; Verification (${verPending.length}) →</button></a>
       <a href="#/events"><button class="g sm">Event Reporting →</button></a>
+      <a href="#/analytics"><button class="g sm">Analytics &amp; Export →</button></a>
       <a href="#/reports"><button class="g sm">Institutional Reports →</button></a>
       <a href="#/notifications"><button class="g sm">Approval Notices →</button></a>
     </div>
@@ -1205,186 +1295,195 @@ function docOfficerDash() {
 }
 
 // ================= UNIVERSITY OFFICERS & DASHBOARD ASSIGNMENT =================
-async function officers(action, id) {
-  if (!isSU() && !isGlobal()) return route();
+// ================= UNIVERSITY OFFICERS & DASHBOARD ASSIGNMENT =================
+function officers(action, id) {
+  try {
+    if (!isSU() && !isGlobal()) {
+      $("#app").innerHTML = `<div class="card empty"><h3>Access Restricted</h3><p class="s">University Officers management is restricted to University Administrators.</p><a href="#/dash"><button class="g sm">Return to Dashboard</button></a></div>`;
+      return;
+    }
 
-  const assignedOfficers = S.users.filter(u => ['iqac', 'dean_research', 'doc_officer'].includes(u.role));
-  const E = S.events || [];
-  const pendingIQAC = E.filter(e => e.status === "DAPPROVED" && !isPartEvent(e)).length;
-  const pendingResearch = E.filter(e => e.status === "DAPPROVED" && isPartEvent(e)).length;
-  const pendingDoc = E.filter(e => e.status === "SUBMITTED").length;
-  const candidateStaff = S.users.filter(u => u.role !== 'su' && !['iqac', 'dean_research', 'doc_officer'].includes(u.role));
+    const assignedOfficers = (S.users || []).filter(u => ['iqac', 'dean_research', 'doc_officer'].includes(u.role));
+    const E = S.events || [];
+    const pendingIQAC = E.filter(e => e.status === "DAPPROVED" && !isPartEvent(e)).length;
+    const pendingResearch = E.filter(e => e.status === "DAPPROVED" && isPartEvent(e)).length;
+    const pendingDoc = E.filter(e => e.status === "SUBMITTED").length;
+    const candidateStaff = (S.users || []).filter(u => u.role !== 'su' && !['iqac', 'dean_research', 'doc_officer'].includes(u.role));
 
-  let h = `
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:8px">
-    <div>
-      <h2 style="margin:0;font-family:'Cinzel',serif;font-weight:700;color:var(--ac)">University Approval Officers &amp; Dashboards</h2>
-      <p class="s" style="margin:4px 0 0">Assign, manage, and monitor the three specialized university authorities responsible for event authorisations, research participation approvals, and institutional documentation verification.</p>
-    </div>
-  </div>
-
-  <div class="grid" style="margin-top:14px">
-    <div class="card stat" style="border-top:3px solid var(--ok, #2e7d32)">
-      <b>${S.users.filter(u => u.role === 'iqac').length}</b>
-      <span>Central IQAC Officer(s) (${pendingIQAC} Pending)</span>
-    </div>
-    <div class="card stat" style="border-top:3px solid var(--wa, #ed6c02)">
-      <b>${S.users.filter(u => u.role === 'dean_research').length}</b>
-      <span>Dean Research Officer(s) (${pendingResearch} Pending)</span>
-    </div>
-    <div class="card stat" style="border-top:3px solid var(--ac, #800020)">
-      <b>${S.users.filter(u => u.role === 'doc_officer').length}</b>
-      <span>Documentation Officer(s) (${pendingDoc} Pending)</span>
-    </div>
-    <div class="card stat">
-      <b>${assignedOfficers.length}</b>
-      <span>Total Assigned Authority Accounts</span>
-    </div>
-  </div>
-
-  <div class="card" style="margin-top:18px">
-    <h3 style="margin:0 0 4px">Create &amp; Assign Authority Account</h3>
-    <p class="s" style="margin:0 0 14px">Assign a university officer to one of the three approval workflows. The user will have access to their dedicated dashboard and verification tools.</p>
-    
-    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:14px">
+    let h = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:8px">
       <div>
-        <label for="off_role">Dashboard Authority / Role <span class="rq">*</span></label>
-        <select id="off_role">
-          <option value="iqac">Central IQAC — Event Organisation Proposals</option>
-          <option value="dean_research">Dean Research, ACU — Academic Participation Proposals</option>
-          <option value="doc_officer">Institutional Documentation Officer — Evidence Verification</option>
-        </select>
-      </div>
-      <div>
-        <label for="off_existing">Select Existing Staff Member (Optional)</label>
-        <select id="off_existing">
-          <option value="">-- Or enter new officer details below --</option>
-          ${candidateStaff.map(u => `<option value="${esc(u.id)}">${esc(u.name)} (${esc(u.email || "no email")}) · ${esc(RN[u.role] || u.role)}</option>`).join("")}
-        </select>
-      </div>
-      <div>
-        <label for="off_name">Name of the User <span class="rq">*</span></label>
-        <input id="off_name" maxlength="100" placeholder="e.g. Dr. Rajesh Kumar">
-      </div>
-      <div>
-        <label for="off_email">Email of the User <span class="rq">*</span></label>
-        <input id="off_email" type="email" maxlength="255" placeholder="officer.email@acu.edu.in">
-      </div>
-      <div>
-        <label for="off_desig">Official Designation / Title</label>
-        <input id="off_desig" maxlength="100" placeholder="e.g. Director, IQAC / Dean of Research">
+        <h2 style="margin:0;font-family:'Cinzel',serif;font-weight:700;color:var(--ac)">University Approval Officers &amp; Dashboards</h2>
+        <p class="s" style="margin:4px 0 0">Assign, manage, and monitor the three specialized university authorities responsible for event authorisations, research participation approvals, and institutional documentation verification.</p>
       </div>
     </div>
-    <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <button id="off_save" style="font-weight:600">+ Create &amp; Assign Officer Account</button>
-      <span class="s" style="color:var(--mu)">Account credentials and dashboard permissions are active immediately.</span>
-    </div>
-  </div>
 
-  <div class="card" style="margin-top:18px">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
-      <div>
-        <h3 style="margin:0">Active Authority Accounts &amp; Workflow Analysis</h3>
-        <p class="s" style="margin:2px 0 0">Officers with authority over Central IQAC, Dean Research, or Evidence Documentation</p>
+    <div class="grid" style="margin-top:14px">
+      <div class="card stat" style="border-top:3px solid var(--ok, #2e7d32)">
+        <b>${(S.users || []).filter(u => u.role === 'iqac').length}</b>
+        <span>Central IQAC Officer(s) (${pendingIQAC} Pending)</span>
       </div>
-      <span class="b ok">${assignedOfficers.length} Officers Assigned</span>
+      <div class="card stat" style="border-top:3px solid var(--wa, #ed6c02)">
+        <b>${(S.users || []).filter(u => u.role === 'dean_research').length}</b>
+        <span>Dean Research Officer(s) (${pendingResearch} Pending)</span>
+      </div>
+      <div class="card stat" style="border-top:3px solid var(--ac, #800020)">
+        <b>${(S.users || []).filter(u => u.role === 'doc_officer').length}</b>
+        <span>Documentation Officer(s) (${pendingDoc} Pending)</span>
+      </div>
+      <div class="card stat">
+        <b>${assignedOfficers.length}</b>
+        <span>Total Assigned Authority Accounts</span>
+      </div>
     </div>
 
-    ${assignedOfficers.length ? `
-      <div class="tw">
-        <table>
-          <thead>
-            <tr>
-              <th>Dashboard Authority</th>
-              <th>Name of the User</th>
-              <th>Email of the User</th>
-              <th>Designation</th>
-              <th>Current Pending Queue</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${assignedOfficers.map(u => {
-              const pendingCount = u.role === "iqac" ? pendingIQAC : u.role === "dean_research" ? pendingResearch : pendingDoc;
-              return `
-                <tr>
-                  <td><span class="b ${u.role === 'iqac' ? 'ok' : u.role === 'dean_research' ? 'wa' : 'b'}">${esc(RN[u.role] || u.role)}</span></td>
-                  <td><b>${esc(u.name)}</b></td>
-                  <td><code>${esc(u.email || "—")}</code></td>
-                  <td>${esc(u.designation || u.title || "Institutional Authority")}</td>
-                  <td><b style="color:${pendingCount > 0 ? 'var(--wa)' : 'var(--ok)'}">${pendingCount} proposal${pendingCount === 1 ? '' : 's'}</b></td>
-                  <td><span class="b ${u.pending ? 'wa' : 'ok'}">${u.pending ? 'Pending Invite' : 'Active'}</span></td>
-                  <td style="white-space:nowrap">
-                    <button class="sm" onclick="sessionStorage.setItem('acu_view', JSON.stringify({ role: '${u.role}', college: null, dept: null })); location.hash = '#/dash'; route()">Switch View →</button>
-                    ${u.pending ? `<button class="g sm" onclick="resendOfficerInv(this,'${u.id}')" style="margin-left:4px">Resend Invite</button>` : ''}
-                    <button class="r sm" onclick="removeOfficer('${u.id}')" style="margin-left:4px">Unassign</button>
-                  </td>
-                </tr>
-              `;
-            }).join("")}
-          </tbody>
-        </table>
+    <div class="card" style="margin-top:18px">
+      <h3 style="margin:0 0 4px">Create &amp; Assign Authority Account</h3>
+      <p class="s" style="margin:0 0 14px">Assign a university officer to one of the three approval workflows. The user will have access to their dedicated dashboard and verification tools.</p>
+      
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:14px">
+        <div>
+          <label for="off_role">Dashboard Authority / Role <span class="rq">*</span></label>
+          <select id="off_role">
+            <option value="iqac">Central IQAC — Event Organisation Proposals</option>
+            <option value="dean_research">Dean Research, ACU — Academic Participation Proposals</option>
+            <option value="doc_officer">Institutional Documentation Officer — Evidence Verification</option>
+          </select>
+        </div>
+        <div>
+          <label for="off_existing">Select Existing Staff Member (Optional)</label>
+          <select id="off_existing">
+            <option value="">-- Or enter new officer details below --</option>
+            ${candidateStaff.map(u => `<option value="${esc(u.id)}">${esc(u.name)} (${esc(u.email || "no email")}) · ${esc(RN[u.role] || u.role)}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label for="off_name">Name of the User <span class="rq">*</span></label>
+          <input id="off_name" maxlength="100" placeholder="e.g. Dr. Rajesh Kumar">
+        </div>
+        <div>
+          <label for="off_email">Email of the User <span class="rq">*</span></label>
+          <input id="off_email" type="email" maxlength="255" placeholder="officer.email@acu.edu.in">
+        </div>
+        <div>
+          <label for="off_desig">Official Designation / Title</label>
+          <input id="off_desig" maxlength="100" placeholder="e.g. Director, IQAC / Dean of Research">
+        </div>
       </div>
-    ` : '<div class="empty">No officers assigned yet. Use the form above to assign officers.</div>'}
-  </div>
-  `;
+      <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button id="off_save" style="font-weight:600">+ Create &amp; Assign Officer Account</button>
+        <span class="s" style="color:var(--mu)">Account credentials and dashboard permissions are active immediately.</span>
+      </div>
+    </div>
 
-  $("#app").innerHTML = h;
+    <div class="card" style="margin-top:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <div>
+          <h3 style="margin:0">Active Authority Accounts &amp; Workflow Analysis</h3>
+          <p class="s" style="margin:2px 0 0">Officers with authority over Central IQAC, Dean Research, or Evidence Documentation</p>
+        </div>
+        <span class="b ok">${assignedOfficers.length} Officers Assigned</span>
+      </div>
 
-  if ($("#off_existing")) {
-    $("#off_existing").onchange = e => {
-      const sel = S.users.find(u => u.id === e.target.value);
-      if (sel) {
-        $("#off_name").value = sel.name || "";
-        $("#off_email").value = sel.email || "";
-        $("#off_desig").value = sel.designation || RN[sel.role] || "";
+      ${assignedOfficers.length ? `
+        <div class="tw">
+          <table>
+            <thead>
+              <tr>
+                <th>Dashboard Authority</th>
+                <th>Name of the User</th>
+                <th>Email of the User</th>
+                <th>Designation</th>
+                <th>Current Pending Queue</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${assignedOfficers.map(u => {
+                const pendingCount = u.role === "iqac" ? pendingIQAC : u.role === "dean_research" ? pendingResearch : pendingDoc;
+                return `
+                  <tr>
+                    <td><span class="b ${u.role === 'iqac' ? 'ok' : u.role === 'dean_research' ? 'wa' : 'b'}">${esc(RN[u.role] || u.role)}</span></td>
+                    <td><b>${esc(u.name)}</b></td>
+                    <td><code>${esc(u.email || "—")}</code></td>
+                    <td>${esc(u.designation || u.title || "Institutional Authority")}</td>
+                    <td><b style="color:${pendingCount > 0 ? 'var(--wa)' : 'var(--ok)'}">${pendingCount} proposal${pendingCount === 1 ? '' : 's'}</b></td>
+                    <td><span class="b ${u.pending ? 'wa' : 'ok'}">${u.pending ? 'Pending Invite' : 'Active'}</span></td>
+                    <td style="white-space:nowrap">
+                      <button class="sm" onclick="sessionStorage.setItem('acu_view', JSON.stringify({ role: '${u.role}', college: null, dept: null })); location.hash = '#/dash'; route()">Switch View →</button>
+                      ${u.pending ? `<button class="g sm" onclick="resendOfficerInv(this,'${u.id}')" style="margin-left:4px">Resend Invite</button>` : ''}
+                      <button class="r sm" onclick="removeOfficer('${u.id}')" style="margin-left:4px">Unassign</button>
+                    </td>
+                  </tr>
+                `;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      ` : '<div class="empty">No officers assigned yet. Use the form above to assign officers.</div>'}
+    </div>
+    `;
+
+    $("#app").innerHTML = h;
+
+    if ($("#off_existing")) {
+      $("#off_existing").onchange = e => {
+        const sel = (S.users || []).find(u => u.id === e.target.value);
+        if (sel) {
+          $("#off_name").value = sel.name || "";
+          $("#off_email").value = sel.email || "";
+          $("#off_desig").value = sel.designation || RN[sel.role] || "";
+        }
+      };
+    }
+
+    $("#off_save").onclick = async () => {
+      const role = $("#off_role").value;
+      const name = $("#off_name").value.trim();
+      const email = $("#off_email").value.trim().toLowerCase();
+      const desig = $("#off_desig").value.trim();
+
+      if (!name || name.length > 100) return alert("Please enter the user's name.");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return alert("Please enter a valid email address.");
+
+      const btn = $("#off_save");
+      btn.disabled = true;
+      btn.textContent = "Assigning...";
+
+      try {
+        let existing = (S.users || []).find(u => (u.email || "").toLowerCase() === email);
+        if (existing) {
+          existing.role = role;
+          existing.name = name;
+          existing.college = null;
+          existing.dept = null;
+          existing.designation = desig || existing.designation || RN[role];
+        } else {
+          S.users.push({
+            id: uid(),
+            name,
+            email,
+            role,
+            college: null,
+            dept: null,
+            designation: desig || RN[role],
+            pending: true
+          });
+        }
+
+        await save();
+        alert(`Success: ${name} (${email}) has been assigned to ${RN[role]}. Login access is active.`);
+      } catch (err) {
+        alert("Could not assign officer: " + (err?.message || err));
+      } finally {
+        officers();
       }
     };
+  } catch (err) {
+    console.error("[officers error]", err);
+    $("#app").innerHTML = `<div class="card empty"><h3>Error loading University Officers</h3><p class="s">${esc(err?.message || err)}</p><a href="#/dash"><button class="g sm">Return to Dashboard</button></a></div>`;
   }
-
-  $("#off_save").onclick = async () => {
-    const role = $("#off_role").value;
-    const name = $("#off_name").value.trim();
-    const email = $("#off_email").value.trim().toLowerCase();
-    const desig = $("#off_desig").value.trim();
-
-    if (!name || name.length > 100) return alert("Please enter the user's name.");
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return alert("Please enter a valid email address.");
-
-    const btn = $("#off_save");
-    btn.disabled = true;
-    btn.textContent = "Assigning...";
-
-    try {
-      let existing = S.users.find(u => (u.email || "").toLowerCase() === email);
-      if (existing) {
-        existing.role = role;
-        existing.name = name;
-        existing.college = null;
-        existing.dept = null;
-        existing.designation = desig || existing.designation || RN[role];
-      } else {
-        S.users.push({
-          id: uid(),
-          name,
-          email,
-          role,
-          college: null,
-          dept: null,
-          designation: desig || RN[role],
-          pending: true
-        });
-      }
-
-      await save();
-      alert(`Success: ${name} (${email}) has been assigned to ${RN[role]}.`);
-    } catch (err) {
-      alert("Could not assign officer: " + (err?.message || err));
-    } finally {
-      officers();
-    }
-  };
 }
 
 window.removeOfficer = async function(id) {
@@ -1428,8 +1527,21 @@ function dash() {
   if (U.role === "dept") return deptDash();
   const D = myDepts(), t = tally(D), E = myEv(), n = f => E.filter(f).length; const sub = U.college && S.subs[U.college + "|" + M];
   let h = `<h2>${esc(({ su: "Super Admin Dashboard", ca: "College Dashboard", dean: "Dean / Principal Dashboard", hod: "HOD Dashboard", dept: "Department Dashboard" })[U.role] || (isGlobal() ? "University Dashboard" : `${RN[U.role] || "Custom Role"} Dashboard`))}</h2><p class="s">${isGlobal() ? "Consolidated view of all colleges" : esc(cn(U.college))}. All figures are counted from records entered in this system.</p>${mSel()}<div class="grid" style="margin-top:12px">`;
-  const st = [...(isGlobal() ? [["Colleges", S.colleges.length]] : []), ["Departments", D.length], ["Reports with data", t.data], ["Zero submissions", t.zero], ["Not reported", t.none], ["Events", E.length], ["Pending college dean approval", n(e => e.status === "PENDING")], ["Pending university approval", n(e => e.status === "DAPPROVED")], ["Verification pending", n(e => e.status === "SUBMITTED")], ["Completed events", n(e => e.status === "COMPLETED")]].filter(([label]) => workflowOn() || !["Events", "Pending college dean approval", "Pending university approval", "Verification pending", "Completed events"].includes(label));
-  h += st.map(x => `<div class="card stat"><b>${x[1]}</b><span>${x[0]}</span></div>`).join("") + `</div>`;
+  const isDeanAdmin = U.role === "dean" || U.role === "ca";
+  const st = [
+    ...(isGlobal() ? [["Colleges", S.colleges.length, "#/colleges"]] : []),
+    ["Departments", D.length, "#/depts"],
+    ["Reports with data", t.data, "#/reports"],
+    ["Zero submissions", t.zero, "#/reports"],
+    ["Not reported", t.none, "#/reports"],
+    ["Events", E.length, "#/events"],
+    ...(isDeanAdmin ? [["Pending HOD Review", n(e => isPendingHOD(e)), "#/review"]] : []),
+    ["Awaiting Dean / Principal Approval", n(e => isPendingDean(e)), "#/review"],
+    ["Pending University Authorisation", n(e => isPendingUniv(e)), "#/review"],
+    ["Verification Pending", n(e => isPendingVer(e)), "#/review"],
+    ["Completed Events", n(e => e.status === "COMPLETED"), "#/events"]
+  ].filter(([label]) => workflowOn() || !["Events", "Pending HOD Review", "Awaiting Dean / Principal Approval", "Pending University Authorisation", "Verification Pending", "Completed Events"].includes(label));
+  h += st.map(x => `<div class="card stat"><a href="${x[2] || '#/dash'}" style="text-decoration:none;color:inherit;display:block"><b>${x[1]}</b><span>${x[0]}</span></a></div>`).join("") + `</div>`;
   if (!D.length) h += `<div class="card empty" style="margin-top:16px">${isGlobal() ? "Start by adding colleges and users." : hasPerm('dept', 'create') ? "Start by adding departments and department users." : "No department is assigned yet."}</div>`;
   if (isGlobal() && S.colleges.length) h += `<div class="card" style="margin-top:16px"><h3>College-wise reporting status (${M})</h3>${legend}<div class="tw"><table><tr><th>College</th><th>Depts</th><th>Depts complete</th><th>Status</th><th>Submitted to university</th></tr>${S.colleges.map(c => { const ds = S.depts.filter(d => d.college === c.id); return `<tr><td>${esc(c.name)}</td><td>${ds.length}</td><td>${ds.filter(deptDone).length}</td><td>${bar(tally(ds))}</td><td>${(S.subs[c.id + "|" + M] || (ds.length > 0 && ds.every(deptDone))) ? '<span class="ok">Yes</span>' : "No"}</td></tr>` }).join("")}</table></div></div>`;
   else if (!isGlobal() && D.length) h += `<div class="card" style="margin-top:16px"><h3 id="dwts_t" style="cursor:pointer" title="Click to show or hide">Department-wise reporting status (${M}) <small id="dwts_a" style="font-weight:600">▸</small></h3><div id="dwts_b" style="display:none">${legend}<div class="tw"><table><tr><th>Department</th><th>Headings done</th><th>Status</th></tr>${D.map(d => `<tr><td>${esc(d.name)}</td><td>${H.filter(x => hs(d.id, x[0]) !== "none").length}/${H.length}</td><td>${bar(tally([d]))}</td></tr>`).join("")}</table></div></div></div>`;
@@ -2049,7 +2161,7 @@ function roles(a, rId) {
   }
 
   window.delRole = async (rId) => {
-    if (['su', 'ca', 'dean', 'hod', 'dept'].includes(rId)) return alert('System default roles cannot be deleted.');
+    if (['su', 'ca', 'dean', 'hod', 'dept', 'iqac', 'dean_research', 'doc_officer'].includes(rId)) return alert('System default roles and specialized authority roles cannot be deleted.');
     const assigned = S.users.filter(u => u.role === rId);
     const msg = assigned.length ?
       `There are ${assigned.length} user(s) assigned to "${RN[rId] || rId}". Deleting it will unassign them. Continue?` :
@@ -2062,20 +2174,7 @@ function roles(a, rId) {
     route();
   };
 
-  const rolesList = [
-    { id: "su", name: RN.su || "University Admin" },
-    { id: "ca", name: RN.ca || "College Admin" },
-    { id: "dean", name: RN.dean || "Dean / Principal" },
-    { id: "hod", name: RN.hod || "Head of Department (HOD)" },
-    { id: "dept", name: RN.dept || "Department User" }
-  ];
-  if (S.customRoles) {
-    Object.keys(S.customRoles).forEach(k => {
-      if (!["su", "ca", "dean", "hod", "dept"].includes(k)) {
-        rolesList.push({ id: k, name: RN[k] || "Custom Role" });
-      }
-    });
-  }
+  const rolesList = getDeduplicatedRoles();
 
   const avGroup = (items, isCol) => {
     if (!items || !items.length) return `<span class="s" style="font-size:13px; color:var(--mu);">None</span>`;
@@ -2270,6 +2369,7 @@ function users(action, id) {
     const canEdit = gl || isSU() || ((hasPerm('users', 'edit') || U.role === 'ca') && u.college === U.college && !['su', 'ca', 'dean'].includes(u.role));
     if (!canEdit) return route();
 
+    const userRoles = getDeduplicatedRoles("users");
     $("#app").innerHTML = `
       <p><a href="#/users" style="text-decoration:none">← Back to Users</a></p>
       <h2>Edit User: ${esc(u.name)}</h2>
@@ -2279,12 +2379,14 @@ function users(action, id) {
            <div>
               <label>Role</label>
               <select id="eu_r" ${u.role === 'su' ? 'disabled' : ''}>
-                 ${u.role === 'su' ? `<option value="su" selected>${esc(RN.su)}</option>` : `${gl ? `<option value="ca" ${u.role === 'ca' ? 'selected' : ''}>${esc(RN.ca)}</option>
-                 <option value="dean" ${u.role === 'dean' ? 'selected' : ''}>${esc(RN.dean)}</option>` : ``}
-                 <option value="hod" ${u.role === 'hod' ? 'selected' : ''}>${esc(RN.hod || "Head of Department (HOD)")}</option>
-                 <option value="dept" ${u.role === 'dept' ? 'selected' : ''}>${esc(RN.dept)}</option>
-                 ${Object.keys(S.customRoles || {}).filter(k => !['ca', 'dean', 'dept', 'hod'].includes(k)).map(k => `<option value="${k}" ${u.role === k ? 'selected' : ''}>${esc(RN[k] || k)}</option>`).join("")}`}
-
+                 ${u.role === 'su' ? `<option value="su" selected>${esc(RN.su)}</option>` : (
+                   ['iqac', 'dean_research', 'doc_officer'].includes(u.role) ? `<option value="${u.role}" selected>${esc(RN[u.role] || u.role)}</option>` : `
+                   ${gl ? `<option value="ca" ${u.role === 'ca' ? 'selected' : ''}>${esc(RN.ca)}</option>
+                   <option value="dean" ${u.role === 'dean' ? 'selected' : ''}>${esc(RN.dean)}</option>` : ``}
+                   <option value="hod" ${u.role === 'hod' ? 'selected' : ''}>${esc(RN.hod || "Head of Department (HOD)")}</option>
+                   <option value="dept" ${u.role === 'dept' ? 'selected' : ''}>${esc(RN.dept)}</option>
+                   ${userRoles.filter(r => !['ca', 'dean', 'hod', 'dept'].includes(r.id)).map(r => `<option value="${r.id}" ${u.role === r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join("")}
+                 `)}
               </select>
            </div>
            <div id="eu_cw" ${gl ? "" : "hidden"}><label>College</label>
@@ -2372,11 +2474,22 @@ function users(action, id) {
       `;
   }).join("");
 
+  const userRoles = getDeduplicatedRoles("users");
   $("#app").innerHTML = `
   <h2>Users</h2>
   <p class="s">${gl ? "Create college admins, deans and other university admins." : "Create one login per department."}</p>
   
-  ${canCre ? `<div class="card" style="margin-bottom:24px"><div class="row"><div><label>Full name *</label><input id="u_n"></div><div><label>Role *</label><select id="u_r">${gl ? `<option value="ca">${esc(RN.ca)}</option><option value="dean">${esc(RN.dean)}</option>` : ``}<option value="hod">${esc(RN.hod || "Head of Department (HOD)")}</option><option value="dept">${esc(RN.dept)}</option>${Object.keys(S.customRoles || {}).filter(k => !['ca', 'dean', 'hod', 'dept'].includes(k)).map(k => `<option value="${k}">${esc(RN[k] || k)}</option>`).join("")}</select></div>
+  ${gl ? `
+    <div class="card" style="margin-bottom:16px;background:var(--ac2);border:1px solid var(--gold-light);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;padding:12px 16px">
+      <div>
+        <b style="color:var(--ac)">University Authority Dashboards:</b>
+        <span class="s" style="margin:0 0 0 6px">Assign dedicated officers for Central IQAC, Dean Research, or Evidence Documentation in University Officers.</span>
+      </div>
+      <a href="#/officers"><button class="sm" style="font-weight:600">Open University Officers →</button></a>
+    </div>
+  ` : ''}
+
+  ${canCre ? `<div class="card" style="margin-bottom:24px"><div class="row"><div><label>Full name *</label><input id="u_n"></div><div><label>Role *</label><select id="u_r">${gl ? `<option value="ca">${esc(RN.ca)}</option><option value="dean">${esc(RN.dean)}</option>` : ``}<option value="hod">${esc(RN.hod || "Head of Department (HOD)")}</option><option value="dept">${esc(RN.dept)}</option>${userRoles.filter(k => !['ca', 'dean', 'hod', 'dept'].includes(k.id)).map(k => `<option value="${k.id}">${esc(k.name)}</option>`).join("")}</select></div>
 <div id="u_cw" ${gl ? "" : "hidden"}><label>College</label><select id="u_c"><option value="">Select College</option>${S.colleges.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join("")}</select></div><div id="u_dw" hidden><label>Department</label><select id="u_d"><option value="">Select Department</option></select></div><div><label>Email ID *</label><input id="u_p" type="email" placeholder="name@acu.ac.in"></div></div><button id="u_g">Create user</button></div>` : ''}
   
   <div class="card" style="padding:0; overflow-x:auto;">
@@ -2991,10 +3104,10 @@ function review() {
         D = E.filter(e => isPendingUniv(e)),
         V = E.filter(e => isPendingVer(e));
   const isHOD = U && U.role === "hod";
-  const hodStage = isHOD || isSU();
   const deanStage = isSU() || (U && (U.role === "dean" || U.role === "ca"));
+  const hodStage = isHOD || isSU() || deanStage;
   const univStage = isGlobal() || isIQAC() || isDeanResearch();
-  const verStage = isDocOfficer() || isIQAC() || isDeanResearch() || isSU() || isHOD || canBackView() || hasPerm('events', 'verify') || (U && (U.role === "ca" || U.role === "dean"));
+  const verStage = isDocOfficer() || isIQAC() || isDeanResearch() || isSU() || isHOD || canBackView() || hasPerm('events', 'verify') || deanStage;
   const open = window.REVIEW_OPEN && E.find(e => e.id === window.REVIEW_OPEN && ["PENDING", "HOD_APPROVED", "DAPPROVED", "SUBMITTED"].includes(e.status));
   if (!open) window.REVIEW_OPEN = null;
   const row = e => `<div class="card" style="cursor:pointer;padding:12px 16px" onclick="window.REVIEW_OPEN='${e.id}';review()"><code>${esc(e.num)}</code> ${badge(e.status, e)} <b style="margin-left:8px">${esc(e.title)}</b> <small style="float:right">${esc(dn(e.dept))} · ${e.date} — Open form →</small></div>`;
@@ -3004,7 +3117,7 @@ function review() {
     const vcard = e => `<div class="card">${workflowStepper(e)}<code>${esc(e.num)}</code> ${badge(e.status, e)}<h3 style="margin:6px 0 0">${esc(e.title)}</h3><small>${esc(cn(eCollege(e)))} · approved for ${e.date}, ${esc(e.venue || "")}</small>${repBlock(e)}<input id="n_${e.id}" placeholder="Remarks (required for return)"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="k sm" onclick="dec('${e.id}','COMPLETED')">Verify &amp; Document Complete</button><button class="g sm" onclick="dec('${e.id}','CRETURNED')">Return for correction</button></div></div>`;
     let body = "";
     if (isPendingHOD(open) && hodStage) {
-      body = card(open, "HOD_APPROVED", "Approve &amp; Forward to Dean / Principal");
+      body = card(open, isHOD ? "HOD_APPROVED" : "DAPPROVED", isHOD ? "Approve &amp; Forward to Dean / Principal" : "Approve &amp; Recommend to University Authorisation");
     } else if (isPendingDean(open) && deanStage) {
       const isPart = isPartEvent(open);
       body = card(open, "DAPPROVED", isPart ? "Recommend to Dean Research, ACU" : "Recommend to Central IQAC");
@@ -3031,9 +3144,9 @@ function review() {
   const univPending = isIQAC() ? D.filter(e => !isPartEvent(e)) : isDeanResearch() ? D.filter(e => isPartEvent(e)) : D;
   
   $("#app").innerHTML = `<h2>Approvals &amp; Verification</h2><p class="s">Every decision is recorded against the Event ID. Follows the official workflow: Staff Submission → HOD Review → Dean / Principal Review → Central IQAC / Dean Research Authorisation → Report Submission → Evidence Verification.</p>` +
-    (hodStage ? `<h3>1. Department HOD Approvals (${P.length})</h3>${P.map(row).join("") || '<div class="card empty">No pending department approvals.</div>'}` : '') +
+    (hodStage ? `<h3>1. Department Proposals (${P.length})</h3>${P.map(row).join("") || '<div class="card empty">No pending department proposals.</div>'}` : '') +
     (deanStage ? `<h3>2. College Dean Approvals (${H.length})</h3>${H.map(row).join("") || '<div class="card empty">No proposals awaiting College Dean approval.</div>'}` : '') +
-    (univStage ? `<h3>3. University Final Authorisations (${univPending.length})</h3>${univPending.map(row).join("") || '<div class="card empty">No proposals awaiting University authorisation.</div>'}` : '') +
+    ((univStage || deanStage) ? `<h3>3. University Final Authorisations (${univPending.length})</h3>${univPending.map(row).join("") || '<div class="card empty">No proposals awaiting University authorisation.</div>'}` : '') +
     (verStage ? `<h3>4. Completion Evidence Verification (${V.length})</h3>${V.map(row).join("") || '<div class="card empty">Nothing waiting for verification.</div>'}` : '') +
     `<h3>All requests</h3><div class="card"><div class="back-filters bv-filters"><div><label for="rv_q">Search</label><input id="rv_q" type="search" value="${esc(window.REVIEW_Q || "")}" placeholder="Event ID, title, requester, college, department"></div><div><label for="rv_sf">Status</label><select id="rv_sf"><option value="">All Requests</option>${["Pending", "Approved", "Rejected"].map(o => `<option ${sf === o ? "selected" : ""}>${o}</option>`).join("")}</select></div></div>${all.length ? `<div class="tw" style="margin-top:10px"><table><tr><th>Event ID</th><th>Event</th><th>Requester</th><th>College</th><th>Department</th><th>Submitted</th><th>Status</th><th></th></tr>${all.map(e => `<tr><td><code>${esc(e.num)}</code></td><td>${esc(e.title)}</td><td>${esc(e.by || "—")}</td><td>${esc(cn(eCollege(e)))}</td><td>${esc(dn(e.dept))}</td><td>${String(e.submittedAt || (e.hist && e.hist[0] && e.hist[0][0]) || "").slice(0, 10)}</td><td>${badge(e.status, e)}</td><td><a href="#/events/view/${e.id}"><button class="g sm">View</button></a>${["PENDING", "HOD_APPROVED", "DAPPROVED", "SUBMITTED"].includes(e.status) ? ` <button class="sm" onclick="window.REVIEW_OPEN='${e.id}';review()">Open form</button>` : ""}</td></tr>`).join("")}</table></div>` : '<div class="empty">No requests match.</div>'}</div>`;
   $("#rv_q").oninput = () => { window.REVIEW_Q = $("#rv_q").value; review(); const el = $("#rv_q"); el.focus(); el.setSelectionRange(el.value.length, el.value.length) };
@@ -3327,10 +3440,10 @@ function viewSwitch() {
   if (window.PORTAL) return `<div class="card vs-card" style="padding:10px;margin:0 0 10px"><small><b>College portal: ${esc(window.PORTAL.name)}</b></small><button class="g sm vs-back" style="margin-top:6px" onclick="sessionStorage.removeItem('acu_portal');location.hash='#/dash';route()">&larr; Exit college portal</button></div>`;
   const on = U.role !== "su";
   const isOfficer = ['iqac', 'dean_research', 'doc_officer'].includes(U.role);
-  const roles = Object.keys(RN);
+  const roles = getDeduplicatedRoles();
   const ds = S.depts.filter(d => !U.college || d.college === U.college);
   return `<div class="card vs-card" style="padding:10px;margin:0 0 10px"><small><b>View as (Super Admin)</b></small>
-<label style="margin-top:6px">Role</label><select id="vs_r" onchange="setView()">${roles.map(r => `<option value="${r}" ${U.role === r ? "selected" : ""}>${esc(RN[r])}</option>`).join("")}</select>
+<label style="margin-top:6px">Role</label><select id="vs_r" onchange="setView()">${roles.map(r => `<option value="${r.id}" ${U.role === r.id ? "selected" : ""}>${esc(r.name)}</option>`).join("")}</select>
 ${on && !isOfficer ? `<label>College</label><select id="vs_c" onchange="document.getElementById('vs_d')&&(document.getElementById('vs_d').value='');setView()"><option value="">All / none</option>${S.colleges.map(c => `<option value="${c.id}" ${U.college === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select>
 <label>Department</label><select id="vs_d" onchange="setView()"><option value="">All / none</option>${ds.map(d => `<option value="${d.id}" ${U.dept === d.id ? "selected" : ""}>${esc(d.name)}</option>`).join("")}</select>` : ""}
 ${on ? `<button class="g sm vs-back" style="margin-top:6px" onclick="sessionStorage.removeItem('acu_view');route()">&larr; Back to Super Admin</button>` : ""}</div>`
