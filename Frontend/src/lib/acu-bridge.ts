@@ -70,6 +70,12 @@ async function loadUsers(): Promise<Any[]> {
 }
 
 export async function loadAcuState(uid: string) {
+  try {
+    const { ensureUserSession } = await import("@/lib/users.functions");
+    await ensureUserSession();
+  } catch (err) {
+    console.warn("[ensureUserSession]", err);
+  }
   const [{ data: items, error }, { data: settings }, users, notes] = await Promise.all([
     supabase.from("app_items").select("collection, id, data").limit(10000),
     supabase.from("app_settings").select("data, event_workflow_enabled").eq("id", 1).maybeSingle(),
@@ -109,7 +115,17 @@ export async function loadAcuState(uid: string) {
     for (const [k, r] of rows) if (allowed(r) && rowSnap.get(k) !== JSON.stringify(r)) ups.push(r);
     const dels = [...rowSnap.keys()].filter((k) => !rows.has(k) && allowed(JSON.parse(rowSnap.get(k) || "{}")));
     if (ups.length) {
-      const { error } = await supabase.from("app_items").upsert(ups);
+      let { error } = await supabase.from("app_items").upsert(ups);
+      if (error && ups.some((r) => r.collection === "events")) {
+        const fallbackUps = ups.map((r) => {
+          if (r.collection === "events" && (r.data as any)?.status === "HOD_APPROVED") {
+            return { ...r, data: { ...(r.data as any), status: "PENDING", hodApproved: true } };
+          }
+          return r;
+        });
+        const retry = await supabase.from("app_items").upsert(fallbackUps);
+        error = retry.error;
+      }
       if (error) fail("Some changes could not be saved: you may not have permission for this action.");
     }
     for (const k of dels) {

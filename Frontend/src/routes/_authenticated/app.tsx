@@ -32,13 +32,13 @@ function AcuApp() {
         installAcuPdf();
         const api = await loadAcuState(user.id);
         if (cancelled) return;
-        (window as any).__ACU = api;
-        const me = (api.S as any).users.find((u: any) => u.id === user.id);
+        (window as any).__ACU = { ...api, uid: user.id, email: user.email };
+        const me = (api.S as any).users.find((u: any) => u.id === user.id || (u.email && user.email && String(u.email).toLowerCase() === String(user.email).toLowerCase()));
         const global = me && (me.role === "su" || (me.role !== "NONE" && !me.college && !me.dept));
         setImportable(!!global && !!localStorage.getItem("acu_v2") && !localStorage.getItem("acu_v2_imported"));
         if (!document.querySelector("script[data-acu-app]")) {
           const s = document.createElement("script");
-          s.src = "/acu/app.js?v=20261103-strictly-clean-officers-nav";
+          s.src = "/acu/app.js?v=20261104-all-dashboards-login-ready";
           s.async = false;
           s.setAttribute("data-acu-app", "1");
           document.body.appendChild(s);

@@ -102,16 +102,44 @@ if (!S.headings) S.headings = defaultH;
 else S.headings.forEach(h => { if (h[0] === "npt" && h[1] === "NPTEL (Students & Staff)") h[1] = "NPTEL (Staff)"; const rn = STAFF_RENAMES[h[0]] || {}; h[2] = h[2].map(f => { f = f.replace(/ Link\|l/g, "|fu").replace(/Link\|l/g, "|fu"); const [l, ...rest] = f.split("|"); return rn[l] ? [rn[l], ...rest].join("|") : f }) });
 (S.recs || []).forEach(r => { const rn = STAFF_RENAMES[r.head]; if (rn && r.data) for (const [o, n] of Object.entries(rn)) if (o in r.data) { if (!(n in r.data)) r.data[n] = r.data[o]; delete r.data[o] } });
 let H = S.headings;
-const ST = { PENDING: ["Pending Dean/Principal Approval", "wa"], DAPPROVED: ["Dean/Principal Approved · Pending University Approval", "wa"], RETURNED: ["Returned for Correction", "er"], REJECTED: ["Rejected", "er"], APPROVED: ["Finally Approved", "ok"], SUBMITTED: ["Verification pending", "wa"], CRETURNED: ["Event Organize returned", "er"], COMPLETED: ["Completed", "ok"] };
+const ST = {
+  PENDING: ["Pending HOD Approval", "wa"],
+  HOD_APPROVED: ["Pending Dean/Principal Approval", "wa"],
+  DAPPROVED: ["Dean/Principal Approved · Pending University Approval", "wa"],
+  RETURNED: ["Returned for Correction", "er"],
+  REJECTED: ["Rejected", "er"],
+  APPROVED: ["Finally Approved", "ok"],
+  SUBMITTED: ["Verification pending", "wa"],
+  CRETURNED: ["Event Organize returned", "er"],
+  COMPLETED: ["Completed", "ok"]
+};
 if (!S.notifications) S.notifications = [];
-// Two-level approval order: the college Dean decides first; only a University Admin may give the final approval.
-const eCollege = e => (S.depts.find(d => d.id === (e && e.dept)) || {}).college || (e && e.college) || null;
-const approvalStage = s => s === "PENDING" ? "dean" : s === "DAPPROVED" ? "university" : null;
-const isDeanOf = e => !!U && U.role === "dean" && !!eCollege(e) && U.college === eCollege(e);
-const isHodOf = e => !!U && U.role === "hod" && (e && e.dept === U.dept);
+// Helper functions for robust department and college resolution across IDs, codes and names
+const deptMatches = (d, val) => {
+  if (!d || !val) return false;
+  const str = String(val).trim().toLowerCase();
+  return d.id === val || (d.code && String(d.code).trim().toLowerCase() === str) || (d.name && String(d.name).trim().toLowerCase() === str);
+};
+const colMatches = (c, val) => {
+  if (!c || !val) return false;
+  const str = String(val).trim().toLowerCase();
+  return c.id === val || (c.code && String(c.code).trim().toLowerCase() === str) || (c.name && String(c.name).trim().toLowerCase() === str);
+};
+const isHodApproved = e => !e ? false : (e.status === "HOD_APPROVED" || (e.status === "PENDING" && Boolean(e.hodApproved || (e.approvals && e.approvals.some(a => a.stage === "hod" && a.decision === "HOD_APPROVED")))));
+const isPendingHOD = e => !e ? false : (e.status === "PENDING" && !isHodApproved(e));
+const isPendingDean = e => !e ? false : (e.status === "HOD_APPROVED" || (e.status === "PENDING" && isHodApproved(e)));
+const isPendingUniv = e => !e ? false : (e.status === "DAPPROVED");
+const isPendingVer = e => !e ? false : (e.status === "SUBMITTED");
+const approvalStage = s => (s === "PENDING" ? "hod" : s === "HOD_APPROVED" ? "dean" : s === "DAPPROVED" ? "university" : null);
+
+// Three-level approval order: Department HOD -> College Dean / Principal -> University Authorisation (Central IQAC / Dean Research).
+const eCollege = e => (S.depts.find(d => deptMatches(d, e && e.dept)) || {}).college || (e && e.college) || null;
+const isDeanOf = e => !!U && (U.role === "dean" || U.role === "ca") && !!eCollege(e) && colMatches({ id: U.college }, eCollege(e));
+const isHodOf = e => !!U && U.role === "hod" && deptMatches({ id: U.dept }, e && e.dept);
 
 const canDecide = (e, d) => {
-  const st = approvalStage(e && e.status);
+  if (!e) return false;
+  const st = isPendingHOD(e) ? "hod" : isPendingDean(e) ? "dean" : isPendingUniv(e) ? "university" : approvalStage(e.status);
   if (!st) return false;
   const isPart = isPartEvent(e);
 
@@ -208,14 +236,38 @@ const isOfficerRole = r => {
 };
 const isOfficer = () => isIQAC() || isDeanResearch() || isDocOfficer() || (U && isOfficerRole(U.role));
 
-const cn = id => (S.colleges.find(c => c.id === id) || {}).name || "—", dn = id => (S.depts.find(d => d.id === id) || {}).name || "—";
+const cn = id => (S.colleges.find(c => colMatches(c, id)) || {}).name || id || "—", dn = id => (S.depts.find(d => deptMatches(d, id)) || {}).name || id || "—";
 const isGlobal = () => isSU() || (U && !['NONE', 'dept', 'hod', 'ca', 'dean', 'iqac', 'dean_research', 'doc_officer'].includes(U.role) && !U.college && !U.dept && !isOfficer());
-const myDepts = () => !U ? [] : (isGlobal() || isOfficer()) ? S.depts : U.dept ? S.depts.filter(d => d.id === U.dept) : S.depts.filter(d => d.college === U.college);
-const myCols = () => !U ? [] : (isGlobal() || isOfficer()) ? S.colleges : S.colleges.filter(c => c.id === U.college);
+const myDepts = () => {
+  if (!U) return [];
+  if (isGlobal() || isOfficer()) return S.depts;
+  if (U.dept) {
+    const matched = S.depts.filter(d => deptMatches(d, U.dept));
+    if (matched.length) return matched;
+  }
+  if (U.college) {
+    return S.depts.filter(d => colMatches({ id: d.college }, U.college) || d.college === U.college);
+  }
+  return [];
+};
+const myCols = () => {
+  if (!U) return [];
+  if (isGlobal() || isOfficer()) return S.colleges;
+  if (U.college) {
+    const matched = S.colleges.filter(c => colMatches(c, U.college));
+    if (matched.length) return matched;
+  }
+  return [];
+};
 const workflowOn = () => S.eventWorkflowEnabled === true;
 const workflowUnavailable = () => { $("#app").innerHTML = '<h2>Feature unavailable</h2><p class="s">This feature is currently turned off.</p>'; };
 const myEv = () => { if (!workflowOn()) return []; const ids = myDepts().map(d => d.id); return S.events.filter(e => ids.includes(e.dept)) };
-const badge = s => `<span class="b ${ST[s][1]}">${ST[s][0]}</span>`;
+const badge = (s, e) => {
+  if (e && isPendingDean(e)) return `<span class="b wa">Pending Dean/Principal Approval</span>`;
+  if (e && isPendingHOD(e)) return `<span class="b wa">Pending HOD Approval</span>`;
+  const info = ST[s] || [s || "Unknown", "wa"];
+  return `<span class="b ${info[1]}">${info[0]}</span>`;
+};
 const hs = (d, h) => S.recs.some(x => x.dept === d && x.month === M && x.head === h) ? "data" : S.zeros.some(x => x.dept === d && x.month === M && x.head === h) ? "zero" : "none";
 const tally = D => { let t = { data: 0, zero: 0, none: 0 }; D.forEach(d => H.forEach(h => t[hs(d.id, h[0])]++)); return t };
 const bar = t => { const n = t.data + t.zero + t.none || 1, w = k => t[k] / n * 100; return `<div class="bar" title="Data ${t.data} · Zero ${t.zero} · Not reported ${t.none}"><i style="width:${w("data")}%;background:var(--ok)"></i><i style="width:${w("zero")}%;background:var(--gold)"></i><i style="width:${w("none")}%;background:var(--er)"></i></div>` };
@@ -271,7 +323,46 @@ function route() {
   document.body.classList.remove('is-login');
   $("#app").classList.remove("back-workspace"); document.body.classList.toggle("in-back", (location.hash || "").startsWith("#/back"));
   const p = (location.hash || "#/dash").slice(2).split("/"); if (!location.hash && !window.__ACU_LANDED) { window.__ACU_LANDED = 1; location.replace("#/dash"); p[0] = "dash"; }
-  U = S.users.find(u => u.id === window.__ACU.uid) || null; window.REALU = U; window.PORTAL = null; { let P = null; try { P = sessionStorage.getItem("acu_portal") } catch (e) { } if (P) { const pc = S.colleges.find(c => String(c.code || "").toLowerCase() === P); if (!pc) { try { sessionStorage.removeItem("acu_portal") } catch (e) { } } else if (U && U.role === "su") { try { sessionStorage.removeItem("acu_view") } catch (e) { } U = Object.assign({}, U, { role: "ca", college: pc.id, dept: null }); window.PORTAL = pc } else if (!U || U.college !== pc.id) { $("#nav").innerHTML = ""; $("#who").innerHTML = `<button class="g sm" onclick="window.__ACU.signOut()">Sign out</button>`; $("#app").innerHTML = `<h2>Access denied</h2><p class="s">This account is not authorized to access ${esc(pc.name)}.</p><button onclick="try{sessionStorage.removeItem('acu_portal')}catch(e){};location.href='/'">Go back</button>`; return } else window.PORTAL = pc } } if (U && U.role === "su" && !window.PORTAL) { let v = null; try { v = JSON.parse(sessionStorage.getItem("acu_view") || "null") } catch (e) { } if (v && v.role && v.role !== "su") U = Object.assign({}, U, { role: v.role, college: v.college || null, dept: v.dept || null }) } if (!U || !U.role || U.role === "NONE") { $("#nav").innerHTML = ""; $("#who").innerHTML = `<button class="g sm" onclick="window.__ACU.signOut()">Sign out</button>`; $("#app").innerHTML = `<h2>No access yet</h2><p class="s">Your account has no role assigned. Please ask your administrator.</p>`; return }
+  const curUid = window.__ACU && window.__ACU.uid;
+  const curEmail = ((window.__ACU && window.__ACU.email) || "").trim().toLowerCase();
+  U = S.users.find(u => (curUid && u.id === curUid) || (curEmail && u.email && u.email.trim().toLowerCase() === curEmail)) || null;
+  if (U && curUid && U.id !== curUid) { U.id = curUid; }
+  window.REALU = U;
+  window.PORTAL = null;
+  {
+    let P = null;
+    try { P = sessionStorage.getItem("acu_portal"); } catch (e) { }
+    if (P) {
+      const pc = S.colleges.find(c => colMatches(c, P));
+      if (!pc) {
+        try { sessionStorage.removeItem("acu_portal"); } catch (e) { }
+      } else if (U && U.role === "su") {
+        try { sessionStorage.removeItem("acu_view"); } catch (e) { }
+        U = Object.assign({}, U, { role: "ca", college: pc.id, dept: null });
+        window.PORTAL = pc;
+      } else if (!U || !colMatches(pc, U.college)) {
+        $("#nav").innerHTML = "";
+        $("#who").innerHTML = `<button class="g sm" onclick="window.__ACU.signOut()">Sign out</button>`;
+        $("#app").innerHTML = `<h2>Access denied</h2><p class="s">This account is not authorized to access ${esc(pc.name)}.</p><button onclick="try{sessionStorage.removeItem('acu_portal')}catch(e){};location.href='/'">Go back</button>`;
+        return;
+      } else {
+        window.PORTAL = pc;
+      }
+    }
+  }
+  if (U && U.role === "su" && !window.PORTAL) {
+    let v = null;
+    try { v = JSON.parse(sessionStorage.getItem("acu_view") || "null"); } catch (e) { }
+    if (v && v.role && v.role !== "su") {
+      U = Object.assign({}, U, { role: v.role, college: v.college || null, dept: v.dept || null });
+    }
+  }
+  if (!U || !U.role || U.role === "NONE") {
+    $("#nav").innerHTML = "";
+    $("#who").innerHTML = `<button class="g sm" onclick="window.__ACU.signOut()">Sign out</button>`;
+    $("#app").innerHTML = `<h2>No access yet</h2><p class="s">Your account has no role assigned. Please ask your administrator.</p>`;
+    return;
+  }
   let T = [];
   if (U.role === 'su') {
     T = ["dash", "colleges", "depts", "users", "officers", "emails", "roles", "analytics", "reports", "settings"];
@@ -1227,7 +1318,7 @@ async function officers(action, id) {
     const desig = $("#off_desig").value.trim();
 
     if (!name || name.length > 100) return alert("Please enter the user's name.");
-    if (!/^[^s@]+@[^s@]+.[^s@]+$/.test(email)) return alert("Please enter a valid email address.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return alert("Please enter a valid email address.");
 
     const btn = $("#off_save");
     btn.disabled = true;
@@ -2685,7 +2776,9 @@ ${approvalPaper(e || {}, { editable: true, isNew: !e, isPart, partRole: e?.partT
         // Only University Admin can customize the reference. Others always receive the system-calculated sequence:
         const num = isUnivAdmin && refInp ? refInp : calcNum;
 
-        S.events.push({ id: uid(), num, dept: D.id, isPart: Boolean(isPart), partType: pCode, category: isPart ? "part" : "evo", ...o, by: U.name, byEmail: U.email || "", submittedAt: new Date().toISOString(), hist: [[new Date().toISOString(), "Submitted for approval"]] })
+        const ev = { id: uid(), num, dept: D.id, isPart: Boolean(isPart), partType: pCode, category: isPart ? "part" : "evo", ...o, by: U.name, byEmail: U.email || "", submittedAt: new Date().toISOString(), hist: [[new Date().toISOString(), "Submitted for approval"]] };
+        S.events.push(ev);
+        sendNotice({ event: ev, status: ev.status, title: "New Proposal Submitted", message: `${ev.title} submitted by ${U.name} (${D.name}). Awaiting HOD review.` });
       }
       save(); location.hash = "#/events"; route()
     }; return
@@ -2822,23 +2915,26 @@ function shrink(f) { return new Promise(r => { const i = new Image; i.onload = (
 function review() {
   if (!workflowOn()) return workflowUnavailable();
   const E = myEv();
-  const P = E.filter(e => e.status === "PENDING"), D = E.filter(e => e.status === "DAPPROVED"), V = E.filter(e => e.status === "SUBMITTED");
+  const P = E.filter(e => isPendingHOD(e)),
+        H = E.filter(e => isPendingDean(e)),
+        D = E.filter(e => isPendingUniv(e)),
+        V = E.filter(e => isPendingVer(e));
   const isHOD = U && U.role === "hod";
-  const hodStage = isHOD;
-  const deanStage = isSU() || (U && U.role === "dean") || hodStage;
+  const hodStage = isHOD || isSU();
+  const deanStage = isSU() || (U && (U.role === "dean" || U.role === "ca"));
   const univStage = isGlobal() || isIQAC() || isDeanResearch();
   const verStage = isDocOfficer() || isIQAC() || isDeanResearch() || isSU() || isHOD || canBackView() || hasPerm('events', 'verify') || (U && (U.role === "ca" || U.role === "dean"));
-  const open = window.REVIEW_OPEN && E.find(e => e.id === window.REVIEW_OPEN && ["PENDING", "DAPPROVED", "SUBMITTED"].includes(e.status));
+  const open = window.REVIEW_OPEN && E.find(e => e.id === window.REVIEW_OPEN && ["PENDING", "HOD_APPROVED", "DAPPROVED", "SUBMITTED"].includes(e.status));
   if (!open) window.REVIEW_OPEN = null;
-  const row = e => `<div class="card" style="cursor:pointer;padding:12px 16px" onclick="window.REVIEW_OPEN='${e.id}';review()"><code>${esc(e.num)}</code> ${badge(e.status)} <b style="margin-left:8px">${esc(e.title)}</b> <small style="float:right">${esc(dn(e.dept))} · ${e.date} — Open form →</small></div>`;
+  const row = e => `<div class="card" style="cursor:pointer;padding:12px 16px" onclick="window.REVIEW_OPEN='${e.id}';review()"><code>${esc(e.num)}</code> ${badge(e.status, e)} <b style="margin-left:8px">${esc(e.title)}</b> <small style="float:right">${esc(dn(e.dept))} · ${e.date} — Open form →</small></div>`;
   const back = `<button class="g sm" onclick="window.REVIEW_OPEN=null;review()">← Back to approvals</button>`;
-  const card = (e, approveTo, approveLabel) => `<div class="card"><code>${esc(e.num)}</code> ${badge(e.status)}<h3 style="margin:6px 0 0">${esc(e.title)}</h3><small>${esc(cn(eCollege(e)))} · ${esc(dn(e.dept))} · ${e.date} · ${esc(e.venue || "venue not given")} · ${esc(e.type || "")}</small>${apForm(e)}<input id="n_${e.id}" placeholder="Remarks (required for return / reject)"><button class="k sm" onclick="dec('${e.id}','${approveTo}')">${approveLabel}</button><button class="g sm" onclick="dec('${e.id}','RETURNED')">Return</button><button class="r sm" onclick="dec('${e.id}','REJECTED')">Reject</button></div>`;
+  const card = (e, approveTo, approveLabel) => `<div class="card">${workflowStepper(e)}<code>${esc(e.num)}</code> ${badge(e.status, e)}<h3 style="margin:6px 0 0">${esc(e.title)}</h3><small>${esc(cn(eCollege(e)))} · ${esc(dn(e.dept))} · ${e.date} · ${esc(e.venue || "venue not given")} · ${esc(e.type || "")}</small>${apForm(e)}<input id="n_${e.id}" placeholder="Remarks (required for return / reject)"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="k sm" onclick="dec('${e.id}','${approveTo}')">${approveLabel}</button><button class="g sm" onclick="dec('${e.id}','RETURNED')">Return for correction</button><button class="r sm" onclick="dec('${e.id}','REJECTED')">Reject</button></div></div>`;
   if (open) {
     const vcard = e => `<div class="card">${workflowStepper(e)}<code>${esc(e.num)}</code> ${badge(e.status, e)}<h3 style="margin:6px 0 0">${esc(e.title)}</h3><small>${esc(cn(eCollege(e)))} · approved for ${e.date}, ${esc(e.venue || "")}</small>${repBlock(e)}<input id="n_${e.id}" placeholder="Remarks (required for return)"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="k sm" onclick="dec('${e.id}','COMPLETED')">Verify &amp; Document Complete</button><button class="g sm" onclick="dec('${e.id}','CRETURNED')">Return for correction</button></div></div>`;
     let body = "";
-    if (open.status === "PENDING" && hodStage) {
+    if (isPendingHOD(open) && hodStage) {
       body = card(open, "HOD_APPROVED", "Approve &amp; Forward to Dean / Principal");
-    } else if (open.status === "HOD_APPROVED" && deanStage) {
+    } else if (isPendingDean(open) && deanStage) {
       const isPart = isPartEvent(open);
       body = card(open, "DAPPROVED", isPart ? "Recommend to Dean Research, ACU" : "Recommend to Central IQAC");
     } else if (open.status === "DAPPROVED" && univStage) {
@@ -2858,13 +2954,17 @@ function review() {
     window.REVIEW_OPEN = null;
   }
   const q = (window.REVIEW_Q || "").toLowerCase(), sf = window.REVIEW_SF || "";
-  const inSf = e => !sf || (sf === "Pending" ? ["PENDING", "DAPPROVED"].includes(e.status) : sf === "Approved" ? ["APPROVED", "SUBMITTED", "COMPLETED"].includes(e.status) : sf === "Rejected" ? ["REJECTED", "RETURNED", "CRETURNED"].includes(e.status) : true);
+  const inSf = e => !sf || (sf === "Pending" ? ["PENDING", "HOD_APPROVED", "DAPPROVED"].includes(e.status) : sf === "Approved" ? ["APPROVED", "SUBMITTED", "COMPLETED"].includes(e.status) : sf === "Rejected" ? ["REJECTED", "RETURNED", "CRETURNED"].includes(e.status) : true);
   const all = [...E].reverse().filter(e => inSf(e) && (!q || (e.num + " " + e.title + " " + (e.by || "") + " " + dn(e.dept) + " " + cn(eCollege(e))).toLowerCase().includes(q)));
-  $("#app").innerHTML = `<h2>Approvals &amp; verification</h2><p class="s">Every decision is recorded against the Event ID. An event moves College Dean → University Admin → Event Organize → Verification.</p>` +
-    (hodStage ? `<h3>1. Department Event approvals (${P.length})</h3>${P.map(row).join("") || '<div class="card empty">No pending department approvals.</div>'}` : deanStage ? `<h3>1. College Dean approvals (${P.length})</h3>${P.map(row).join("") || '<div class="card empty">Nothing waiting.</div>'}` : '') +
-    (univStage ? `<h3>2. University final approvals (${D.length})</h3>${D.map(row).join("") || '<div class="card empty">Nothing waiting.</div>'}` : '') +
-    (verStage ? `<h3>${hodStage ? "2" : "3"}. Completion verification (${V.length})</h3>${V.map(row).join("") || '<div class="card empty">Nothing waiting for verification.</div>'}` : '') +
-    `<h3>All requests</h3><div class="card"><div class="back-filters bv-filters"><div><label for="rv_q">Search</label><input id="rv_q" type="search" value="${esc(window.REVIEW_Q || "")}" placeholder="Event ID, title, requester, college, department"></div><div><label for="rv_sf">Status</label><select id="rv_sf"><option value="">All Requests</option>${["Pending", "Approved", "Rejected"].map(o => `<option ${sf === o ? "selected" : ""}>${o}</option>`).join("")}</select></div></div>${all.length ? `<div class="tw" style="margin-top:10px"><table><tr><th>Event ID</th><th>Event</th><th>Requester</th><th>College</th><th>Department</th><th>Submitted</th><th>Status</th><th></th></tr>${all.map(e => `<tr><td><code>${esc(e.num)}</code></td><td>${esc(e.title)}</td><td>${esc(e.by || "—")}</td><td>${esc(cn(eCollege(e)))}</td><td>${esc(dn(e.dept))}</td><td>${String(e.submittedAt || (e.hist && e.hist[0] && e.hist[0][0]) || "").slice(0, 10)}</td><td>${badge(e.status)}</td><td><a href="#/events/view/${e.id}"><button class="g sm">View</button></a>${["PENDING", "DAPPROVED", "SUBMITTED"].includes(e.status) ? ` <button class="sm" onclick="window.REVIEW_OPEN='${e.id}';review()">Open form</button>` : ""}</td></tr>`).join("")}</table></div>` : '<div class="empty">No requests match.</div>'}</div>`;
+  
+  const univPending = isIQAC() ? D.filter(e => !isPartEvent(e)) : isDeanResearch() ? D.filter(e => isPartEvent(e)) : D;
+  
+  $("#app").innerHTML = `<h2>Approvals &amp; Verification</h2><p class="s">Every decision is recorded against the Event ID. Follows the official workflow: Staff Submission → HOD Review → Dean / Principal Review → Central IQAC / Dean Research Authorisation → Report Submission → Evidence Verification.</p>` +
+    (hodStage ? `<h3>1. Department HOD Approvals (${P.length})</h3>${P.map(row).join("") || '<div class="card empty">No pending department approvals.</div>'}` : '') +
+    (deanStage ? `<h3>2. College Dean Approvals (${H.length})</h3>${H.map(row).join("") || '<div class="card empty">No proposals awaiting College Dean approval.</div>'}` : '') +
+    (univStage ? `<h3>3. University Final Authorisations (${univPending.length})</h3>${univPending.map(row).join("") || '<div class="card empty">No proposals awaiting University authorisation.</div>'}` : '') +
+    (verStage ? `<h3>4. Completion Evidence Verification (${V.length})</h3>${V.map(row).join("") || '<div class="card empty">Nothing waiting for verification.</div>'}` : '') +
+    `<h3>All requests</h3><div class="card"><div class="back-filters bv-filters"><div><label for="rv_q">Search</label><input id="rv_q" type="search" value="${esc(window.REVIEW_Q || "")}" placeholder="Event ID, title, requester, college, department"></div><div><label for="rv_sf">Status</label><select id="rv_sf"><option value="">All Requests</option>${["Pending", "Approved", "Rejected"].map(o => `<option ${sf === o ? "selected" : ""}>${o}</option>`).join("")}</select></div></div>${all.length ? `<div class="tw" style="margin-top:10px"><table><tr><th>Event ID</th><th>Event</th><th>Requester</th><th>College</th><th>Department</th><th>Submitted</th><th>Status</th><th></th></tr>${all.map(e => `<tr><td><code>${esc(e.num)}</code></td><td>${esc(e.title)}</td><td>${esc(e.by || "—")}</td><td>${esc(cn(eCollege(e)))}</td><td>${esc(dn(e.dept))}</td><td>${String(e.submittedAt || (e.hist && e.hist[0] && e.hist[0][0]) || "").slice(0, 10)}</td><td>${badge(e.status, e)}</td><td><a href="#/events/view/${e.id}"><button class="g sm">View</button></a>${["PENDING", "HOD_APPROVED", "DAPPROVED", "SUBMITTED"].includes(e.status) ? ` <button class="sm" onclick="window.REVIEW_OPEN='${e.id}';review()">Open form</button>` : ""}</td></tr>`).join("")}</table></div>` : '<div class="empty">No requests match.</div>'}</div>`;
   $("#rv_q").oninput = () => { window.REVIEW_Q = $("#rv_q").value; review(); const el = $("#rv_q"); el.focus(); el.setSelectionRange(el.value.length, el.value.length) };
   $("#rv_sf").onchange = () => { window.REVIEW_SF = $("#rv_sf").value; review() };
   hydrate($("#app"))
@@ -2874,12 +2974,19 @@ function dec(id, s) {
   if (["RETURNED", "REJECTED", "CRETURNED"].includes(s) && !n) return alert("Please add a remark.");
   const ok = ["COMPLETED", "CRETURNED"].includes(s) ? canVerify(e) : canDecide(e, s);
   if (!ok) return alert("This event is not waiting for a decision from your approval stage.");
-  if (!confirm(`Confirm: mark "${e.title}" as ${ST[s][0]}${n ? " with remark: " + n : ""}?`)) return;
+  const sName = ST[s] ? ST[s][0] : s;
+  if (!confirm(`Confirm: mark "${e.title}" as ${sName}${n ? " with remark: " + n : ""}?`)) return;
   const stage = approvalStage(e.status) || "verification", at = new Date().toISOString();
   e.status = s; e.remark = n;
-  e.hist.push([at, ST[s][0] + " by " + U.name + (n ? ": " + n : "")]);
+  if (s === "HOD_APPROVED") {
+    e.hodApproved = true;
+    e.hodApprovedBy = U.name;
+    e.hodApprovedAt = at;
+  }
+  e.hist.push([at, sName + " by " + U.name + (n ? ": " + n : "")]);
   (e.approvals = e.approvals || []).push({ stage, decision: s, by: U.id, byName: U.name, remarks: n, at });
-  window.REVIEW_OPEN = null; save(); review()
+  sendNotice({ event: e, status: s, title: sName, message: `${e.title} updated to ${sName} by ${U.name}${n ? " (" + n + ")" : ""}` });
+  window.REVIEW_OPEN = null; save(); review();
 }
 function notifications() {
   const N = S.notifications || [], me = window.__ACU.uid;

@@ -333,12 +333,17 @@ export const syncUsers = createServerFn({ method: "POST" })
               const { error: resetErr } = await supabaseAdmin.auth.resetPasswordForEmail(c.email.toLowerCase(), { redirectTo });
               if (resetErr) console.warn(`[SyncUsers ResetPassword Fallback] ${c.email}:`, resetErr.message);
             } else {
+              errors.push(`${c.email}: invitation email could not be sent; account saved.`);
               console.warn(`[SyncUsers InviteError] ${c.email}:`, inviteError.message);
             }
           }
         }
       }
-      invitations.push({ name: c.name, email: c.email.toLowerCase(), inviteLink: confirmationUrl });
+      if (!sentCustomEmail && errors.some(e => e.includes(c.email))) {
+        // invite email failed
+      } else {
+        invitations.push({ name: c.name, email: c.email.toLowerCase(), inviteLink: confirmationUrl });
+      }
     }
 
     for (const u of data.updates) {
@@ -449,6 +454,60 @@ export const bootstrapSuperAdmin = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+/** Ensures the authenticated user's profile and assigned role are cleanly linked and ready in public.profiles and public.user_roles. */
+export const ensureUserSession = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const uid = context.userId;
+    const { data: au } = await supabaseAdmin.auth.admin.getUserById(uid);
+    if (!au?.user) return { ok: false };
+    const email = (au.user.email || "").toLowerCase();
+    const name = (au.user.user_metadata as any)?.name || email.split("@")[0] || "User";
+
+    const [{ data: prof }, { data: userRole }, { count: totalSu }] = await Promise.all([
+      supabaseAdmin.from("profiles").select("id, name, email, college_id, dept_id").eq("id", uid).maybeSingle(),
+      supabaseAdmin.from("user_roles").select("role").eq("user_id", uid).maybeSingle(),
+      supabaseAdmin.from("user_roles").select("id", { count: "exact", head: true }).eq("role", "su"),
+    ]);
+
+    // If this is the initial user and no Super Admin exists, auto-grant Super Admin
+    if (!totalSu || totalSu === 0) {
+      await supabaseAdmin.from("profiles").upsert({
+        id: uid,
+        name: name || "Super Admin",
+        email,
+        college_id: null,
+        dept_id: null,
+      });
+      await supabaseAdmin.from("user_roles").upsert(
+        { user_id: uid, role: "su" },
+        { onConflict: "user_id,role" },
+      );
+      return { ok: true, role: "su" };
+    }
+
+    // If profile is missing for this uid, check if an existing profile exists with this email (e.g. pre-invited)
+    if (!prof && email) {
+      const { data: emailProf } = await supabaseAdmin.from("profiles").select("*").eq("email", email).maybeSingle();
+      if (emailProf && emailProf.id !== uid) {
+        await supabaseAdmin.from("profiles").update({ id: uid }).eq("id", emailProf.id);
+        await supabaseAdmin.from("user_roles").update({ user_id: uid }).eq("user_id", emailProf.id);
+        return { ok: true };
+      }
+      // If no matching profile exists, create a default profile row
+      await supabaseAdmin.from("profiles").upsert({
+        id: uid,
+        name,
+        email,
+        college_id: null,
+        dept_id: null,
+      });
+    }
+
+    return { ok: true, role: userRole?.role ?? "NONE" };
+  });
+
 /** Activation status for every account the caller is allowed to see. */
 export const getUserStatuses = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -502,13 +561,14 @@ export const resendInvite = createServerFn({ method: "POST" })
     const email = au?.user?.email || target.email;
     let sentCustomEmail = false;
     let confirmationUrl = redirectTo;
+    let tokenHash: string | undefined;
     try {
-      const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
+      const { data: linkData } = await (supabaseAdmin.auth.admin as any).generateLink?.({
         type: au.user.email_confirmed_at ? "recovery" : "invite",
         email,
         options: { redirectTo },
-      });
-      const tokenHash = linkData?.properties?.hashed_token;
+      }) || {};
+      tokenHash = linkData?.properties?.hashed_token;
       if (tokenHash) {
         confirmationUrl = `${redirectTo}?token_hash=${tokenHash}&type=${au.user.email_confirmed_at ? "recovery" : "invite"}`;
       }
@@ -579,9 +639,9 @@ export const sendAccountPasswordReset = createServerFn({ method: "POST" })
     if (error || !target?.email) throw new Error("User not found.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error: sendError } = await supabaseAdmin.auth.resetPasswordForEmail(target.email, { redirectTo });
-    let resetLink = redirectTo;
+    let resetLink: string | undefined;
     try {
-      const { data: linkData } = await supabaseAdmin.auth.admin.generateLink?.({
+      const { data: linkData } = await (supabaseAdmin.auth.admin as any).generateLink?.({
         type: "recovery",
         email: target.email.toLowerCase(),
         options: { redirectTo },
@@ -590,7 +650,9 @@ export const sendAccountPasswordReset = createServerFn({ method: "POST" })
       if (tokenHash) resetLink = `${redirectTo}?token_hash=${tokenHash}&type=recovery`;
     } catch {}
     if (sendError) console.warn("[SendPasswordReset]", sendError.message);
-    return { ok: true, resetLink };
+    const out: { ok: true; resetLink?: string } = { ok: true };
+    if (resetLink) out.resetLink = resetLink;
+    return out;
   });
 
 /** Disable or re-enable an account. Global admins only; Super Admin accounts need a Super Admin. */
