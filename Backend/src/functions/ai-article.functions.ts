@@ -1,4 +1,4 @@
-const getOpenAIApiKey = () => process.env["OPENAI_API_KEY"] || process.env["AI_API_KEY"] || Buffer.from("c2stcHJvai1hNHdOYk5FN3dmYUtUV0NqaVBFUnRUTmZXT1lnNkc5OWNNVWZmMTZDNzNJVEVDOUdIZWRkcUxqSXBxUWRtVDFYbnlNVE1zSldzS1QzQmxia0ZKQVQ3TUpTUl85WlMwTy1JQXVMVHpTcjZiTTJSMDJ4Y2lXUDQyQkEybGVmSXk0ck12bldWaVh3VDhuei02ZUFIVXQtRGhXMTZLTUE=", "base64").toString("utf-8");
+const getOpenAIApiKey = () => process.env["OPENAI_API_KEY"] || process.env["AI_API_KEY"] || "";
 const getAIModel = () => process.env["AI_MODEL"] || process.env["OPENAI_MODEL"] || "gpt-4o";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
