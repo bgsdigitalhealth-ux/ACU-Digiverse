@@ -1,5 +1,3 @@
-const getOpenAIApiKey = () => process.env["OPENAI_API_KEY"] || process.env["AI_API_KEY"] || "";
-const getAIModel = () => process.env["AI_MODEL"] || process.env["OPENAI_MODEL"] || "gpt-4o";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -7,6 +5,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 const inputSchema = z.object({
   eventId: z.string().trim().min(1).max(64),
   notes: z.string().trim().max(2000).default(""),
+  apiKey: z.string().optional(),
 });
 
 const articleSchema = z.object({
@@ -15,12 +14,42 @@ const articleSchema = z.object({
   factsToVerify: z.array(z.string()),
 });
 
+async function resolveAIConfig(supabaseClient: any, clientKey?: string) {
+  let apiKey = process.env["OPENAI_API_KEY"] || process.env["AI_API_KEY"] || "";
+  let model = process.env["AI_MODEL"] || process.env["OPENAI_MODEL"] || "gpt-4o";
+
+  if (!apiKey && supabaseClient) {
+    try {
+      const { data: row } = await supabaseClient
+        .from("app_settings")
+        .select("data")
+        .eq("id", 1)
+        .maybeSingle();
+      const settings = (row?.data as Record<string, unknown>) || {};
+      if (typeof settings["openai_api_key"] === "string" && settings["openai_api_key"]) {
+        apiKey = settings["openai_api_key"];
+      }
+      if (typeof settings["ai_model"] === "string" && settings["ai_model"]) {
+        model = settings["ai_model"];
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  if (!apiKey && clientKey) {
+    apiKey = clientKey;
+  }
+
+  return { apiKey, model };
+}
+
 export const generateEventArticle = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) => inputSchema.parse(data))
   .handler(async ({ data, context }) => {
-    const apiKey = getOpenAIApiKey();
-    if (!apiKey) throw new Error("AI article generation is not configured. Set OPENAI_API_KEY on the server.");
+    const { apiKey, model } = await resolveAIConfig(context.supabase, data.apiKey);
+    if (!apiKey) throw new Error("AI article generation is not configured. Set OPENAI_API_KEY in Settings or server environment.");
 
     const { data: eventRow, error: eventError } = await context.supabase
       .from("app_items")
@@ -64,7 +93,7 @@ export const generateEventArticle = createServerFn({ method: "POST" })
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: getAIModel(),
+        model: model || "gpt-4o",
         max_output_tokens: 5000,
         instructions: [
           "Write a detailed, publication-ready institutional event article using only the supplied source data.",

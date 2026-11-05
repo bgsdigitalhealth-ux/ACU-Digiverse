@@ -3423,7 +3423,37 @@ function settings(edit_hk = null, showForm = false, tab = null) {
   <div class="tabs" ${isFormVisible ? 'hidden' : ''}>
     <a href="#" onclick="settings(null, false, 'headings'); return false;" class="${t === 'headings' ? 'on' : ''}">Reporting Headings</a>
     <a href="#" onclick="settings(null, false, 'cycle'); return false;" class="${t === 'cycle' ? 'on' : ''}">Reporting Cycle</a>
+    <a href="#" onclick="settings(null, false, 'ai'); return false;" class="${t === 'ai' ? 'on' : ''}">AI Configuration</a>
     <a href="#" onclick="settings(null, false, 'reset'); return false;" class="${t === 'reset' ? 'on' : ''}" style="color:var(--er)">Danger Zone</a>
+  </div>
+  
+  <div class="card" ${isFormVisible || t !== 'ai' ? 'hidden' : ''}>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+      <h3 style="margin:0">OpenAI & AI Configuration</h3>
+    </div>
+    <p class="s" style="margin-top:-8px">Configure the OpenAI API Key and model for AI Article Generation across institutional event reports.</p>
+    <div style="max-width:540px; display:flex; flex-direction:column; gap:14px">
+      <div>
+        <label for="ai_settings_key">OpenAI API Key</label>
+        <div style="display:flex; gap:8px">
+          <input id="ai_settings_key" type="password" placeholder="sk-proj-..." value="${esc(S.openai_api_key || '')}" style="margin:0; font-family:monospace; font-size:13px">
+          <button type="button" class="g sm" id="toggle_key_vis" style="white-space:nowrap">Show</button>
+        </div>
+        <p class="s" style="margin:4px 0 0; font-size:12px; color:var(--mu)">The API key is securely stored in application settings and used by server AI functions.</p>
+      </div>
+      <div>
+        <label for="ai_settings_model">Default AI Model</label>
+        <select id="ai_settings_model" style="margin:0">
+          <option value="gpt-4o" ${(S.ai_model || 'gpt-4o') === 'gpt-4o' ? 'selected' : ''}>gpt-4o (Default, High Performance Multimodal)</option>
+          <option value="gpt-4o-mini" ${S.ai_model === 'gpt-4o-mini' ? 'selected' : ''}>gpt-4o-mini (Faster, Lightweight)</option>
+          <option value="gpt-4-turbo" ${S.ai_model === 'gpt-4-turbo' ? 'selected' : ''}>gpt-4-turbo</option>
+          <option value="o3-mini" ${S.ai_model === 'o3-mini' ? 'selected' : ''}>o3-mini</option>
+        </select>
+      </div>
+      <div>
+        <button class="g" id="save_ai_settings" style="margin:0">Save AI Configuration</button>
+      </div>
+    </div>
   </div>
   
   <div class="card" ${isFormVisible || t !== 'reset' ? 'hidden' : ''}>
@@ -3496,6 +3526,27 @@ function settings(edit_hk = null, showForm = false, tab = null) {
       save();
       alert("Reporting cycle updated.");
       route();
+    };
+  }
+
+  if ($("#toggle_key_vis")) {
+    $("#toggle_key_vis").onclick = () => {
+      const inp = $("#ai_settings_key");
+      if (!inp) return;
+      if (inp.type === "password") { inp.type = "text"; $("#toggle_key_vis").textContent = "Hide"; }
+      else { inp.type = "password"; $("#toggle_key_vis").textContent = "Show"; }
+    };
+  }
+
+  if ($("#save_ai_settings")) {
+    $("#save_ai_settings").onclick = async () => {
+      const key = $("#ai_settings_key") ? $("#ai_settings_key").value.trim() : "";
+      const model = $("#ai_settings_model") ? $("#ai_settings_model").value : "gpt-4o";
+      S.openai_api_key = key;
+      S.ai_model = model;
+      await saveSettings();
+      alert("AI configuration saved successfully.");
+      settings(null, false, 'ai');
     };
   }
 

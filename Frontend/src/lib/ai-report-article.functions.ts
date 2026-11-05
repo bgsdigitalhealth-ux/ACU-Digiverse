@@ -1,5 +1,3 @@
-const getOpenAIApiKey = () => process.env["OPENAI_API_KEY"] || process.env["AI_API_KEY"] || "";
-const getAIModel = () => process.env["AI_MODEL"] || process.env["OPENAI_MODEL"] || "gpt-4o";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
@@ -18,6 +16,7 @@ const inputSchema = z.object({
   fields: z.record(z.string().max(300), z.string().max(20000)),
   notes: z.string().max(3000).default(""),
   files: z.array(fileSchema).max(10).default([]),
+  apiKey: z.string().optional(),
 });
 
 const articleSchema = z.object({
@@ -40,6 +39,36 @@ const INSTRUCTIONS = [
   "Add 4–8 concise keyHighlights. Use formal, polished British/Indian academic English.",
 ].join(" ");
 
+async function resolveAIConfig(supabaseClient: any, clientKey?: string) {
+  let apiKey = process.env["OPENAI_API_KEY"] || process.env["AI_API_KEY"] || "";
+  let model = process.env["AI_MODEL"] || process.env["OPENAI_MODEL"] || "gpt-4o";
+
+  if (!apiKey && supabaseClient) {
+    try {
+      const { data: row } = await supabaseClient
+        .from("app_settings")
+        .select("data")
+        .eq("id", 1)
+        .maybeSingle();
+      const settings = (row?.data as Record<string, unknown>) || {};
+      if (typeof settings["openai_api_key"] === "string" && settings["openai_api_key"]) {
+        apiKey = settings["openai_api_key"];
+      }
+      if (typeof settings["ai_model"] === "string" && settings["ai_model"]) {
+        model = settings["ai_model"];
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  if (!apiKey && clientKey) {
+    apiKey = clientKey;
+  }
+
+  return { apiKey, model };
+}
+
 export const generateReportArticle = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) => inputSchema.parse(data))
@@ -48,8 +77,8 @@ export const generateReportArticle = createServerFn({ method: "POST" })
       const { data: enabled, error } = await context.supabase.rpc("event_workflow_enabled");
       if (error || enabled !== true) throw new Error("Event workflow is currently OFF.");
     }
-    const apiKey = getOpenAIApiKey();
-    if (!apiKey) throw new Error("AI article generation is not configured. Set OPENAI_API_KEY on the server.");
+    const { apiKey, model } = await resolveAIConfig(context.supabase, data.apiKey);
+    if (!apiKey) throw new Error("AI article generation is not configured. Set OPENAI_API_KEY in Settings or server environment.");
 
     const fields = Object.fromEntries(Object.entries(data.fields).filter(([, v]) => v && v.trim()));
     const source = { reportHeading: data.heading, department: data.department, reportingPeriod: data.period, reportFields: fields, writerNotes: data.notes };
@@ -64,45 +93,50 @@ export const generateReportArticle = createServerFn({ method: "POST" })
     }
 
     const aiEndpoint = process.env["AI_GATEWAY_URL"] || "https://api.openai.com/v1/responses";
-    const res = await fetch(aiEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: getAIModel(),
-        instructions: INSTRUCTIONS,
-        input: [{ role: "user", content }],
-        stream: true,
-        store: false,
-        reasoning: { effort: "medium", summary: "auto" },
-        include: ["reasoning.encrypted_content"],
-        text: {
-          format: {
-            type: "json_schema",
-            name: "report_article",
-            strict: true,
-            schema: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                title: { type: "string" },
-                summary: { type: "string" },
-                sections: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    additionalProperties: false,
-                    properties: { heading: { type: "string" }, content: { type: "string" } },
-                    required: ["heading", "content"],
-                  },
+    const requestBody: Record<string, unknown> = {
+      model: model || "gpt-4o",
+      instructions: INSTRUCTIONS,
+      input: [{ role: "user", content }],
+      stream: true,
+      store: false,
+      text: {
+        format: {
+          type: "json_schema",
+          name: "report_article",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              title: { type: "string" },
+              summary: { type: "string" },
+              sections: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: { heading: { type: "string" }, content: { type: "string" } },
+                  required: ["heading", "content"],
                 },
-                keyHighlights: { type: "array", items: { type: "string" } },
-                factsToVerify: { type: "array", items: { type: "string" } },
               },
-              required: ["title", "summary", "sections", "keyHighlights", "factsToVerify"],
+              keyHighlights: { type: "array", items: { type: "string" } },
+              factsToVerify: { type: "array", items: { type: "string" } },
             },
+            required: ["title", "summary", "sections", "keyHighlights", "factsToVerify"],
           },
         },
-      }),
+      },
+    };
+
+    if (typeof model === "string" && (model.startsWith("o1") || model.startsWith("o3"))) {
+      requestBody.reasoning = { effort: "medium", summary: "auto" };
+      requestBody.include = ["reasoning.encrypted_content"];
+    }
+
+    const res = await fetch(aiEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(requestBody),
     });
 
     if (!res.ok || !res.body) {

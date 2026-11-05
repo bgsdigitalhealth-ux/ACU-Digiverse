@@ -366,10 +366,10 @@ export async function loadAcuState(uid: string) {
       return res;
     },
     async generateArticle(eventId: string, notes: string) {
-      return await generateEventArticle({ data: { eventId, notes } });
+      return await generateEventArticle({ data: { eventId, notes, apiKey: S.openai_api_key } });
     },
     async generateReportArticle(payload: Any) {
-      return await generateReportArticle({ data: payload });
+      return await generateReportArticle({ data: { ...payload, apiKey: payload?.apiKey || S.openai_api_key } });
     },
     async signOut() {
       await supabase.auth.signOut();
