@@ -1276,9 +1276,6 @@ function deanResearchDash() {
   $("#app").innerHTML = h;
 }
 
-  $("#app").innerHTML = h;
-}
-
 function docOfficerDash() {
   const E = myEv();
   const n = f => E.filter(f).length;
