@@ -111,8 +111,8 @@ function AuthPage() {
         {mode === "in"
           ? "Sign in with your email to continue."
           : mode === "up"
-          ? "Create a new user account with email and password."
-          : "We'll email you a link to set a new password."}
+            ? "Create a new user account with email and password."
+            : "We'll email you a link to set a new password."}
       </p>
       <form onSubmit={submit}>
         {mode === "up" && (

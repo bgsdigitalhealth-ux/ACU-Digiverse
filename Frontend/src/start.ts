@@ -11,7 +11,7 @@ const errorMiddleware = createMiddleware().server(async ({ next, request }) => {
       throw error;
     }
     console.error("[StartServer Error]", error);
-    
+
     // If the error occurred during an RPC serverFn request, rethrow so TanStack Start
     // serializes it properly for the RPC client rather than sending an HTML webpage.
     const isServerFn = request?.url?.includes("/serverFn/") || request?.headers?.get("x-tsr-serverFn") === "true";
