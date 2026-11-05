@@ -1,10 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#6B1D2F"/>
-  <circle cx="32" cy="32" r="28" fill="none" stroke="#D4AF37" stroke-width="2"/>
-  <!-- Academic Graduation Cap / Book Icon -->
-  <polygon points="32,16 52,26 32,36 12,26" fill="#D4AF37"/>
-  <path d="M22,32 v11 c0,5.5 4.5,10 10,10 s10,-4.5 10,-10 v-11" fill="none" stroke="#D4AF37" stroke-width="3"/>
-  <line x1="48" y1="28" x2="48" y2="44" stroke="#D4AF37" stroke-width="2.5"/>
-  <circle cx="48" cy="45" r="2" fill="#D4AF37"/>
+  <defs>
+    <linearGradient id="acuBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#800020"/>
+      <stop offset="100%" stop-color="#550A1A"/>
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FCE182"/>
+      <stop offset="50%" stop-color="#D4AF37"/>
+      <stop offset="100%" stop-color="#AA820A"/>
+    </linearGradient>
+  </defs>
+  <!-- Background Tile -->
+  <rect width="64" height="64" rx="14" fill="url(#acuBg)"/>
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="none" stroke="url(#goldGrad)" stroke-width="1.5" opacity="0.9"/>
+  <!-- Academic Cap Top Diamond -->
+  <polygon points="32,14 53,24.5 32,35 11,24.5" fill="url(#goldGrad)"/>
+  <!-- Cap Skull Base -->
+  <path d="M20,31.5 v8 c0,6.6 5.4,12 12,12 s12,-5.4 12,-12 v-8" fill="none" stroke="url(#goldGrad)" stroke-width="3" stroke-linecap="round"/>
+  <!-- Tassel -->
+  <path d="M47,27.5 v14.5" stroke="url(#goldGrad)" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="47" cy="44" r="2.2" fill="url(#goldGrad)"/>
 </svg>
-
