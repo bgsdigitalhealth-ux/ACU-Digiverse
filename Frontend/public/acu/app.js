@@ -105,7 +105,8 @@ let H = S.headings;
 const ST = {
   PENDING: ["Pending HOD Approval", "wa"],
   HOD_APPROVED: ["Pending Dean/Principal Approval", "wa"],
-  DAPPROVED: ["Dean/Principal Approved · Pending University Approval", "wa"],
+  DAPPROVED: ["Dean/Principal Approved · Pending Approval", "wa"],
+  RESEARCH_APPROVED: ["Dean Research Approved · Pending Central IQAC Approval", "wa"],
   RETURNED: ["Returned for Correction", "er"],
   REJECTED: ["Rejected", "er"],
   APPROVED: ["Finally Approved", "ok"],
@@ -125,14 +126,39 @@ const colMatches = (c, val) => {
   const str = String(val).trim().toLowerCase();
   return c.id === val || (c.code && String(c.code).trim().toLowerCase() === str) || (c.name && String(c.name).trim().toLowerCase() === str);
 };
+
+// Approval tracking predicates
 const isHodApproved = e => !e ? false : (e.status === "HOD_APPROVED" || (e.status === "PENDING" && Boolean(e.hodApproved || (e.approvals && e.approvals.some(a => a.stage === "hod" && a.decision === "HOD_APPROVED")))));
+const isDeanApproved = e => !e ? false : (e.status === "DAPPROVED" || e.status === "RESEARCH_APPROVED" || e.status === "APPROVED" || Boolean(e.deanApproved));
+const isResearchApproved = e => !e ? false : (e.status === "RESEARCH_APPROVED" || Boolean(e.researchApproved || (e.approvals && e.approvals.some(a => (a.stage === "dean_research" || a.stage === "research") && (a.decision === "RESEARCH_APPROVED" || a.decision === "APPROVED")))));
+
+// Workflow stage queues:
+// 1. Event Organized: Department User (PENDING) -> HOD (HOD_APPROVED) -> Dean / Principal (DAPPROVED) -> Central IQAC (APPROVED)
+// 2. Academic Participation: Department User (PENDING) -> HOD (HOD_APPROVED) -> Dean / Principal (DAPPROVED) -> Dean Research (RESEARCH_APPROVED) -> Central IQAC (APPROVED)
 const isPendingHOD = e => !e ? false : (e.status === "PENDING" && !isHodApproved(e));
 const isPendingDean = e => !e ? false : (e.status === "HOD_APPROVED" || (e.status === "PENDING" && isHodApproved(e)));
-const isPendingUniv = e => !e ? false : (e.status === "DAPPROVED");
+const isPendingResearch = e => !e ? false : (isPartEvent(e) && (e.status === "DAPPROVED" && !isResearchApproved(e)));
+const isPendingIQAC = e => !e ? false : (
+  isPartEvent(e)
+    ? (e.status === "RESEARCH_APPROVED" || (e.status === "DAPPROVED" && isResearchApproved(e)))
+    : (e.status === "DAPPROVED")
+);
+const isPendingUniv = e => !e ? false : (isPartEvent(e) ? (isPendingResearch(e) || isPendingIQAC(e)) : isPendingIQAC(e));
 const isPendingVer = e => !e ? false : (e.status === "SUBMITTED");
-const approvalStage = s => (s === "PENDING" ? "hod" : s === "HOD_APPROVED" ? "dean" : s === "DAPPROVED" ? "university" : null);
 
-// Helper to determine if an event is an Academic Participation event (Dean Research) vs Event Organization (Central IQAC)
+const approvalStage = e => {
+  if (!e) return null;
+  const s = typeof e === "string" ? e : e.status;
+  const isPart = typeof e === "string" ? false : isPartEvent(e);
+  const resApproved = typeof e === "string" ? false : isResearchApproved(e);
+  if (s === "PENDING") return "hod";
+  if (s === "HOD_APPROVED") return "dean";
+  if (s === "DAPPROVED") return (isPart && !resApproved) ? "dean_research" : "iqac";
+  if (s === "RESEARCH_APPROVED") return "iqac";
+  return null;
+};
+
+// Helper to determine if an event is an Academic Participation event (Dean Research -> Central IQAC) vs Event Organization (Central IQAC)
 const isPartEvent = e => {
   if (!e) return false;
   if (e.isPart === true || e.isPart === "true" || e.isPart === 1) return true;
@@ -145,19 +171,16 @@ const isPartEvent = e => {
   return type.includes("participation") || title.includes("participation");
 };
 
-// Three-level approval order: Department HOD -> College Dean / Principal -> University Authorisation (Central IQAC / Dean Research).
 const eCollege = e => (S.depts.find(d => deptMatches(d, e && e.dept)) || {}).college || (e && e.college) || null;
 const isDeanOf = e => !!U && (U.role === "dean" || U.role === "ca") && !!eCollege(e) && colMatches({ id: U.college }, eCollege(e));
 const isHodOf = e => !!U && U.role === "hod" && deptMatches({ id: U.dept }, e && e.dept);
 
 const canDecide = (e, d) => {
   if (!e) return false;
-  const st = isPendingHOD(e) ? "hod" : isPendingDean(e) ? "dean" : isPendingUniv(e) ? "university" : approvalStage(e.status);
-  if (!st) return false;
   const isPart = isPartEvent(e);
 
   // Stage 1: Department HOD Review (PENDING -> HOD_APPROVED or DAPPROVED)
-  if (st === "hod") {
+  if (isPendingHOD(e)) {
     const isHod = isHodOf(e) || isSU() || isDeanOf(e);
     if (!isHod) return false;
     if (d === "HOD_APPROVED" || d === "DAPPROVED") return true;
@@ -166,7 +189,7 @@ const canDecide = (e, d) => {
   }
 
   // Stage 2: College Dean / Principal Review (HOD_APPROVED -> DAPPROVED)
-  if (st === "dean") {
+  if (isPendingDean(e)) {
     const isDean = isDeanOf(e) || isSU();
     if (!isDean) return false;
     if (d === "DAPPROVED") return true;
@@ -174,10 +197,19 @@ const canDecide = (e, d) => {
     return false;
   }
 
-  // Stage 3: University Authorisation (DAPPROVED -> APPROVED)
-  if (st === "university") {
-    const canAuthorize = isSU() || (isPart ? isDeanResearch() : isIQAC()) || (isGlobal() && !['ca', 'dean', 'hod', 'dept', 'iqac', 'dean_research', 'doc_officer'].includes(U.role));
-    if (!canAuthorize) return false;
+  // Stage 3 (Academic Participation only): Dean Research, ACU Review (DAPPROVED -> RESEARCH_APPROVED)
+  if (isPendingResearch(e)) {
+    const canResearch = isDeanResearch() || isSU() || (isGlobal() && !['ca', 'dean', 'hod', 'dept', 'iqac', 'doc_officer'].includes(U.role));
+    if (!canResearch) return false;
+    if (d === "RESEARCH_APPROVED" || d === "APPROVED") return true;
+    if (d === "RETURNED" || d === "REJECTED") return true;
+    return false;
+  }
+
+  // Stage 4 (Final University Authorisation): Central IQAC (DAPPROVED for events, RESEARCH_APPROVED for participation -> APPROVED)
+  if (isPendingIQAC(e)) {
+    const canIQAC = isIQAC() || isSU() || (isGlobal() && !['ca', 'dean', 'hod', 'dept', 'dean_research', 'doc_officer'].includes(U.role));
+    if (!canIQAC) return false;
     if (d === "APPROVED") return true;
     if (d === "RETURNED" || d === "REJECTED") return true;
     return false;
@@ -340,6 +372,12 @@ const myEv = () => {
   });
 };
 const badge = (s, e) => {
+  if (e && isPendingIQAC(e)) {
+    return isPartEvent(e)
+      ? `<span class="b wa">Pending Central IQAC (Dean Research Approved)</span>`
+      : `<span class="b wa">Pending Central IQAC Approval</span>`;
+  }
+  if (e && isPendingResearch(e)) return `<span class="b wa">Pending Dean Research Approval</span>`;
   if (e && isPendingDean(e)) return `<span class="b wa">Pending Dean/Principal Approval</span>`;
   if (e && isPendingHOD(e)) return `<span class="b wa">Pending HOD Approval</span>`;
   const info = ST[s] || [s || "Unknown", "wa"];
@@ -992,19 +1030,21 @@ function deptDash() {
 function iqacDash() {
   const E = myEv();
   const n = f => E.filter(f).length;
-  const orgPending = E.filter(e => e.status === "DAPPROVED" && !isPartEvent(e));
-  const orgApproved = n(e => e.status === "APPROVED" && !isPartEvent(e));
-  const orgCompleted = n(e => e.status === "COMPLETED" && !isPartEvent(e));
-  const orgTotal = n(e => !isPartEvent(e));
+  const orgPending = E.filter(e => !isPartEvent(e) && isPendingIQAC(e));
+  const partPending = E.filter(e => isPartEvent(e) && isPendingIQAC(e));
+  const totalPending = orgPending.length + partPending.length;
+  const totalApproved = n(e => e.status === "APPROVED");
+  const totalCompleted = n(e => e.status === "COMPLETED");
+  const totalProposals = E.length;
 
   let h = `
   <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:12px">
     <div>
       <h2 style="margin:0;font-family:'Cinzel',serif;font-weight:700;color:var(--ac)">Central IQAC Dashboard</h2>
-      <p class="s" style="margin:4px 0 0">University Quality Assurance Directorate · Event Organisation Authorisation · Logged in as: <b>${esc(U.name)}</b></p>
+      <p class="s" style="margin:4px 0 0">University Quality Assurance Directorate · Final Authorisation Authority for Events &amp; Participation · Logged in as: <b>${esc(U.name)}</b></p>
     </div>
     <div class="noprint" style="display:flex;gap:8px;flex-wrap:wrap">
-      <a href="#/review"><button class="sm">Open Approvals &amp; Verification (${orgPending.length}) →</button></a>
+      <a href="#/review"><button class="sm">Open Approvals &amp; Verification (${totalPending}) →</button></a>
       <a href="#/events"><button class="g sm">Event Reporting →</button></a>
       <a href="#/analytics"><button class="g sm">Analytics &amp; Export →</button></a>
       <a href="#/reports"><button class="g sm">Reports →</button></a>
@@ -1013,31 +1053,31 @@ function iqacDash() {
   </div>
 
   <div class="grid" style="margin-top:14px">
-    <div class="card stat" style="border-top:3px solid ${orgPending.length > 0 ? 'var(--wa, #ed6c02)' : 'var(--ok, #2e7d32)'}">
+    <div class="card stat" style="border-top:3px solid ${totalPending > 0 ? 'var(--wa, #ed6c02)' : 'var(--ok, #2e7d32)'}">
       <a href="#/review" style="text-decoration:none;color:inherit;display:block">
-        <b>${orgPending.length}</b>
-        <span>Awaiting IQAC Authorisation →</span>
+        <b>${totalPending}</b>
+        <span>Awaiting IQAC Authorisation (${orgPending.length} Events, ${partPending.length} Participation) →</span>
       </a>
     </div>
     <div class="card stat" style="border-top:3px solid var(--ok, #2e7d32)">
-      <b>${orgApproved}</b>
-      <span>Quality Authorised Events</span>
+      <b>${totalApproved}</b>
+      <span>Quality Authorised Proposals</span>
     </div>
     <div class="card stat" style="border-top:3px solid var(--ac, #800020)">
-      <b>${orgCompleted}</b>
+      <b>${totalCompleted}</b>
       <span>Completed &amp; Documented</span>
     </div>
     <div class="card stat">
-      <b>${orgTotal}</b>
-      <span>Total Event Proposals</span>
+      <b>${totalProposals}</b>
+      <span>Total University Proposals</span>
     </div>
   </div>
 
   <div class="card" style="margin-top:16px">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
       <div>
-        <h3 style="margin:0">Event Organisation Proposals Awaiting Central IQAC Authorisation</h3>
-        <p class="s" style="margin:2px 0 0">Recommended by College Dean / Principal · Ready for final University Quality Authorisation</p>
+        <h3 style="margin:0">1. Event Organisation Proposals Awaiting Central IQAC Authorisation (${orgPending.length})</h3>
+        <p class="s" style="margin:2px 0 0">Workflow: Dept User → HOD → Dean / Principal → <b>Central IQAC (Final Approval)</b></p>
       </div>
       <span class="b ${orgPending.length ? 'wa' : 'ok'}">${orgPending.length} Pending Decision</span>
     </div>
@@ -1071,19 +1111,62 @@ function iqacDash() {
         </table>
       </div>
     ` : `
-      <div class="empty" style="padding:24px 16px;text-align:center">
-        <p style="margin:0;font-size:15px;color:var(--mu)">✓ No event proposals currently awaiting Central IQAC authorisation. All submitted proposals have been reviewed.</p>
-        <p style="margin:8px 0 0"><a href="#/review"><button class="g sm">Go to Approvals &amp; Verification</button></a> <a href="#/events" style="margin-left:8px"><button class="g sm">Browse All Events</button></a></p>
+      <div class="empty" style="padding:16px;text-align:center">
+        <p style="margin:0;font-size:14px;color:var(--mu)">✓ No event organisation proposals currently awaiting Central IQAC authorisation.</p>
       </div>
     `}
   </div>
 
   <div class="card" style="margin-top:16px">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-      <h3 style="margin:0">Recent University Event Records</h3>
+      <div>
+        <h3 style="margin:0">2. Academic Participation Proposals Awaiting Final Central IQAC Authorisation (${partPending.length})</h3>
+        <p class="s" style="margin:2px 0 0">Workflow: Dept User → HOD → Dean / Principal → Dean Research → <b>Central IQAC (Final Approval)</b></p>
+      </div>
+      <span class="b ${partPending.length ? 'wa' : 'ok'}">${partPending.length} Pending Decision</span>
+    </div>
+    ${partPending.length ? `
+      <div class="tw">
+        <table>
+          <thead>
+            <tr>
+              <th>Approval ID</th>
+              <th>Participation Title</th>
+              <th>Institution &amp; Department</th>
+              <th>Dates &amp; Venue</th>
+              <th>Dean Research Recommendation</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${partPending.map(e => `
+              <tr>
+                <td><code>${esc(e.num)}</code></td>
+                <td><b>${esc(e.title)}</b><br><small style="color:var(--mu)">Submitter: ${esc(e.by || "Faculty")}</small></td>
+                <td>${esc(cn(eCollege(e)))}<br><small style="color:var(--mu)">${esc(dn(e.dept))}</small></td>
+                <td>${esc(e.date)}${e.dateTo ? " to " + esc(e.dateTo) : ""}<br><small style="color:var(--mu)">${esc(e.venue || e.mode || "—")}</small></td>
+                <td><span class="b wa">Dean Research Vetted</span><br><small>${esc(e.approvals?.find(a => a.stage === "dean_research" || a.stage === "research")?.byName || e.researchApprovedBy || "Dean Research, ACU")}</small></td>
+                <td>
+                  <button class="sm" onclick="window.REVIEW_OPEN='${e.id}';location.hash='#/review';route()">Grant Final Authorisation →</button>
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    ` : `
+      <div class="empty" style="padding:16px;text-align:center">
+        <p style="margin:0;font-size:14px;color:var(--mu)">✓ No academic participation proposals currently awaiting Central IQAC final authorisation.</p>
+      </div>
+    `}
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+      <h3 style="margin:0">Recent University Records</h3>
       <a href="#/events"><button class="sm">View All Events →</button></a>
     </div>
-    ${trk(E.filter(e => !isPartEvent(e)).slice(-6).reverse())}
+    ${trk(E.slice(-6).reverse())}
   </div>
   `;
 
@@ -1093,16 +1176,16 @@ function iqacDash() {
 function deanResearchDash() {
   const E = myEv();
   const n = f => E.filter(f).length;
-  const partPending = E.filter(e => e.status === "DAPPROVED" && isPartEvent(e));
-  const partApproved = n(e => e.status === "APPROVED" && isPartEvent(e));
-  const partCompleted = n(e => e.status === "COMPLETED" && isPartEvent(e));
-  const partTotal = n(e => isPartEvent(e));
+  const partPending = E.filter(e => isPartEvent(e) && isPendingResearch(e));
+  const partRecommended = n(e => isPartEvent(e) && (e.status === "RESEARCH_APPROVED" || e.status === "APPROVED" || Boolean(e.researchApproved)));
+  const partCompleted = n(e => isPartEvent(e) && e.status === "COMPLETED");
+  const partTotal = n(isPartEvent);
 
   let h = `
   <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:12px">
     <div>
       <h2 style="margin:0;font-family:'Cinzel',serif;font-weight:700;color:var(--ac)">Dean Research Dashboard</h2>
-      <p class="s" style="margin:4px 0 0">University Research Directorate · Academic Participation Proposal Authorisation · Logged in as: <b>${esc(U.name)}</b></p>
+      <p class="s" style="margin:4px 0 0">University Research Directorate · Academic Participation Proposal Evaluation · Logged in as: <b>${esc(U.name)}</b></p>
     </div>
     <div class="noprint" style="display:flex;gap:8px;flex-wrap:wrap">
       <a href="#/review"><button class="sm">Open Approvals &amp; Verification (${partPending.length}) →</button></a>
@@ -1117,12 +1200,12 @@ function deanResearchDash() {
     <div class="card stat" style="border-top:3px solid ${partPending.length > 0 ? 'var(--wa, #ed6c02)' : 'var(--ok, #2e7d32)'}">
       <a href="#/review" style="text-decoration:none;color:inherit;display:block">
         <b>${partPending.length}</b>
-        <span>Awaiting Dean Research Authorisation →</span>
+        <span>Awaiting Dean Research Review →</span>
       </a>
     </div>
     <div class="card stat" style="border-top:3px solid var(--ok, #2e7d32)">
-      <b>${partApproved}</b>
-      <span>Authorised Participations</span>
+      <b>${partRecommended}</b>
+      <span>Vetted &amp; Recommended for IQAC</span>
     </div>
     <div class="card stat" style="border-top:3px solid var(--ac, #800020)">
       <b>${partCompleted}</b>
@@ -1137,10 +1220,10 @@ function deanResearchDash() {
   <div class="card" style="margin-top:16px">
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
       <div>
-        <h3 style="margin:0">Academic Participation Proposals Awaiting Authorisation</h3>
-        <p class="s" style="margin:2px 0 0">Conference Attendance, Paper Presentations &amp; Resource Person Activities · Recommended by Dean</p>
+        <h3 style="margin:0">Academic Participation Proposals Awaiting Dean Research Review</h3>
+        <p class="s" style="margin:2px 0 0">Workflow: Dept User → HOD → Dean / Principal → <b>Dean Research (Review)</b> → Central IQAC (Final Approval)</p>
       </div>
-      <span class="b ${partPending.length ? 'wa' : 'ok'}">${partPending.length} Pending Authorisation</span>
+      <span class="b ${partPending.length ? 'wa' : 'ok'}">${partPending.length} Pending Review</span>
     </div>
     ${partPending.length ? `
       <div class="tw">
@@ -1166,7 +1249,7 @@ function deanResearchDash() {
                 <td>${esc(e.date)}${e.dateTo ? " to " + esc(e.dateTo) : ""}<br><small style="color:var(--mu)">${esc(e.venue || e.mode || "—")}</small></td>
                 <td><span class="b wa">Dean Approved</span><br><small>${esc(e.approvals?.find(a => a.stage === "dean")?.byName || "College Dean")}</small></td>
                 <td>
-                  <button class="sm" onclick="window.REVIEW_OPEN='${e.id}';location.hash='#/review';route()">Review &amp; Authorise →</button>
+                  <button class="sm" onclick="window.REVIEW_OPEN='${e.id}';location.hash='#/review';route()">Review &amp; Forward to IQAC →</button>
                 </td>
               </tr>
             `).join("")}
@@ -1175,7 +1258,7 @@ function deanResearchDash() {
       </div>
     ` : `
       <div class="empty" style="padding:24px 16px;text-align:center">
-        <p style="margin:0;font-size:15px;color:var(--mu)">✓ No academic participation proposals currently awaiting Dean Research authorisation.</p>
+        <p style="margin:0;font-size:15px;color:var(--mu)">✓ No academic participation proposals currently awaiting Dean Research review. All proposals have been vetted and forwarded to Central IQAC.</p>
         <p style="margin:8px 0 0"><a href="#/review"><button class="g sm">Go to Approvals &amp; Verification</button></a> <a href="#/events" style="margin-left:8px"><button class="g sm">View All Participations</button></a></p>
       </div>
     `}
@@ -1189,6 +1272,9 @@ function deanResearchDash() {
     ${trk(E.filter(isPartEvent).slice(-6).reverse())}
   </div>
   `;
+
+  $("#app").innerHTML = h;
+}
 
   $("#app").innerHTML = h;
 }
@@ -1305,8 +1391,8 @@ function officers(action, id) {
 
     const assignedOfficers = (S.users || []).filter(u => ['iqac', 'dean_research', 'doc_officer'].includes(u.role));
     const E = S.events || [];
-    const pendingIQAC = E.filter(e => e.status === "DAPPROVED" && !isPartEvent(e)).length;
-    const pendingResearch = E.filter(e => e.status === "DAPPROVED" && isPartEvent(e)).length;
+    const pendingIQAC = E.filter(e => isPendingIQAC(e)).length;
+    const pendingResearch = E.filter(e => isPendingResearch(e)).length;
     const pendingDoc = E.filter(e => e.status === "SUBMITTED").length;
     const candidateStaff = (S.users || []).filter(u => u.role !== 'su' && !['iqac', 'dean_research', 'doc_officer'].includes(u.role));
 
@@ -2746,7 +2832,8 @@ ${!rs.length && !z ? `<div class="card"><h3>No activity this ${cyclePeriod()}</h
     const m = {
       PENDING: "This Approval ID is awaiting Department HOD review.",
       HOD_APPROVED: "This Approval ID is approved by HOD and awaiting College Dean / Principal approval.",
-      DAPPROVED: isPartEvent(e) ? "This Approval ID is awaiting Dean Research, ACU final authorisation." : "This Approval ID is awaiting Central IQAC final authorisation.",
+      DAPPROVED: isPartEvent(e) ? "This Approval ID is approved by Dean/Principal and awaiting Dean Research, ACU review." : "This Approval ID is approved by Dean/Principal and awaiting Central IQAC final authorisation.",
+      RESEARCH_APPROVED: "This Approval ID is vetted by Dean Research, ACU and awaiting Central IQAC final authorisation.",
       RETURNED: "This approval was returned for correction. Correct and resubmit the approval form first.",
       REJECTED: "This approval was rejected. Report submission is not allowed."
     }[e.status];
@@ -3096,19 +3183,85 @@ function articlePreview(e) {
 }
 function shrink(f) { return new Promise(r => { const i = new Image; i.onload = () => { const k = Math.min(1, 640 / i.width), c = document.createElement("canvas"); c.width = i.width * k; c.height = i.height * k; c.getContext("2d").drawImage(i, 0, 0, c.width, c.height); r(c.toDataURL("image/jpeg", .6)) }; i.src = URL.createObjectURL(f) }) }
 
+function workflowStepper(e) {
+  if (!e) return "";
+  const isPart = isPartEvent(e);
+  const st = e.status || "PENDING";
+  const isHod = isHodApproved(e);
+  const isDean = isDeanApproved(e);
+  const isRes = isResearchApproved(e);
+  const isFinal = ["APPROVED", "SUBMITTED", "COMPLETED"].includes(st);
+  const isRet = ["RETURNED", "CRETURNED"].includes(st);
+  const isRej = st === "REJECTED";
+
+  let steps = [];
+  if (isPart) {
+    // Academic Participation: Dept User -> HOD -> Dean/Principal -> Dean Research -> Central IQAC
+    steps = [
+      { id: "dept", title: "1. Dept User", sub: "Submitted", done: true, current: false },
+      { id: "hod", title: "2. HOD Review", sub: isHod ? "Approved" : (st === "PENDING" ? "Awaiting Review" : "Pending"), done: isHod || isDean || isRes || isFinal, current: isPendingHOD(e) },
+      { id: "dean", title: "3. Dean / Principal", sub: isDean ? "Recommended" : (isPendingDean(e) ? "Awaiting Review" : "Pending"), done: isDean || isRes || isFinal, current: isPendingDean(e) },
+      { id: "research", title: "4. Dean Research", sub: isRes ? "Vetted & Recommended" : (isPendingResearch(e) ? "Awaiting Research Review" : "Pending"), done: isRes || isFinal, current: isPendingResearch(e) },
+      { id: "iqac", title: "5. Central IQAC", sub: isFinal ? "Final Approval" : (isPendingIQAC(e) ? "Awaiting Authorisation" : "Pending"), done: isFinal, current: isPendingIQAC(e) },
+    ];
+  } else {
+    // Event Organized: Dept User -> HOD -> Dean/Principal -> Central IQAC
+    steps = [
+      { id: "dept", title: "1. Dept User", sub: "Submitted", done: true, current: false },
+      { id: "hod", title: "2. HOD Review", sub: isHod ? "Approved" : (st === "PENDING" ? "Awaiting Review" : "Pending"), done: isHod || isDean || isFinal, current: isPendingHOD(e) },
+      { id: "dean", title: "3. Dean / Principal", sub: isDean ? "Recommended" : (isPendingDean(e) ? "Awaiting Review" : "Pending"), done: isDean || isFinal, current: isPendingDean(e) },
+      { id: "iqac", title: "4. Central IQAC", sub: isFinal ? "Final Approval" : (isPendingIQAC(e) ? "Awaiting Authorisation" : "Pending"), done: isFinal, current: isPendingIQAC(e) },
+    ];
+  }
+
+  return `
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin:0 0 16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+      <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--ac,#800020)">
+        Official Approval Workflow · ${isPart ? "Academic Participation" : "Event Organized"}
+      </span>
+      <span class="s" style="font-size:11px">
+        ${isPart ? "Dept User → HOD → Dean/Principal → Dean Research → Central IQAC" : "Dept User → HOD → Dean/Principal → Central IQAC"}
+      </span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(${steps.length}, 1fr);gap:6px;align-items:start">
+      ${steps.map((s, idx) => {
+        const bg = (isRej && s.current) ? "#dc2626" : (isRet && s.current) ? "#ea580c" : s.done ? "#16a34a" : s.current ? "var(--ac,#800020)" : "#e2e8f0";
+        const color = s.done || s.current || (isRej && s.current) || (isRet && s.current) ? "#ffffff" : "#64748b";
+        const icon = (isRej && s.current) ? "✕" : (isRet && s.current) ? "↩" : s.done ? "✓" : (idx + 1);
+        return `
+          <div style="text-align:center">
+            <div style="width:26px;height:26px;border-radius:50%;background:${bg};color:${color};display:flex;align-items:center;justify-content:center;margin:0 auto 4px;font-weight:700;font-size:11px">
+              ${icon}
+            </div>
+            <div style="font-size:11px;font-weight:${s.current ? '700' : '600'};color:${s.current ? 'var(--ac,#800020)' : s.done ? '#16a34a' : '#334155'};line-height:1.2">
+              ${esc(s.title)}${s.current ? ' <span style="font-size:10px;color:var(--wa,#ed6c02)">● Active</span>' : ''}
+            </div>
+            <div style="font-size:10px;color:var(--mu,#64748b);margin-top:2px;line-height:1.2">
+              ${esc(s.sub)}
+            </div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  </div>`;
+}
+
 function review() {
   if (!workflowOn()) return workflowUnavailable();
   const E = myEv();
   const P = E.filter(e => isPendingHOD(e)),
         H = E.filter(e => isPendingDean(e)),
-        D = E.filter(e => isPendingUniv(e)),
+        R = E.filter(e => isPendingResearch(e)),
+        Q = E.filter(e => isPendingIQAC(e)),
         V = E.filter(e => isPendingVer(e));
   const isHOD = U && U.role === "hod";
   const deanStage = isSU() || (U && (U.role === "dean" || U.role === "ca"));
   const hodStage = isHOD || isSU() || deanStage;
-  const univStage = isGlobal() || isIQAC() || isDeanResearch();
+  const researchStage = isSU() || isDeanResearch() || (isGlobal() && !isOfficer());
+  const iqacStage = isSU() || isIQAC() || (isGlobal() && !isOfficer());
   const verStage = isDocOfficer() || isIQAC() || isDeanResearch() || isSU() || isHOD || canBackView() || hasPerm('events', 'verify') || deanStage;
-  const open = window.REVIEW_OPEN && E.find(e => e.id === window.REVIEW_OPEN && ["PENDING", "HOD_APPROVED", "DAPPROVED", "SUBMITTED"].includes(e.status));
+  const open = window.REVIEW_OPEN && E.find(e => e.id === window.REVIEW_OPEN && ["PENDING", "HOD_APPROVED", "DAPPROVED", "RESEARCH_APPROVED", "SUBMITTED"].includes(e.status));
   if (!open) window.REVIEW_OPEN = null;
   const row = e => `<div class="card" style="cursor:pointer;padding:12px 16px" onclick="window.REVIEW_OPEN='${e.id}';review()"><code>${esc(e.num)}</code> ${badge(e.status, e)} <b style="margin-left:8px">${esc(e.title)}</b> <small style="float:right">${esc(dn(e.dept))} · ${e.date} — Open form →</small></div>`;
   const back = `<button class="g sm" onclick="window.REVIEW_OPEN=null;review()">← Back to approvals</button>`;
@@ -3117,16 +3270,15 @@ function review() {
     const vcard = e => `<div class="card">${workflowStepper(e)}<code>${esc(e.num)}</code> ${badge(e.status, e)}<h3 style="margin:6px 0 0">${esc(e.title)}</h3><small>${esc(cn(eCollege(e)))} · approved for ${e.date}, ${esc(e.venue || "")}</small>${repBlock(e)}<input id="n_${e.id}" placeholder="Remarks (required for return)"><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="k sm" onclick="dec('${e.id}','COMPLETED')">Verify &amp; Document Complete</button><button class="g sm" onclick="dec('${e.id}','CRETURNED')">Return for correction</button></div></div>`;
     let body = "";
     if (isPendingHOD(open) && hodStage) {
-      body = card(open, isHOD ? "HOD_APPROVED" : "DAPPROVED", isHOD ? "Approve &amp; Forward to Dean / Principal" : "Approve &amp; Recommend to University Authorisation");
+      body = card(open, isHOD ? "HOD_APPROVED" : "DAPPROVED", isHOD ? "Approve &amp; Forward to Dean / Principal" : "Approve &amp; Recommend");
     } else if (isPendingDean(open) && deanStage) {
       const isPart = isPartEvent(open);
-      body = card(open, "DAPPROVED", isPart ? "Recommend to Dean Research, ACU" : "Recommend to Central IQAC");
-    } else if (open.status === "DAPPROVED" && univStage) {
+      body = card(open, "DAPPROVED", isPart ? "Approve &amp; Forward to Dean Research, ACU" : "Approve &amp; Forward to Central IQAC");
+    } else if (isPendingResearch(open) && researchStage) {
+      body = card(open, "RESEARCH_APPROVED", "Approve &amp; Forward to Central IQAC (Dean Research)");
+    } else if (isPendingIQAC(open) && iqacStage) {
       const isPart = isPartEvent(open);
-      const canUnivApprove = isSU() || (isPart ? isDeanResearch() : isIQAC()) || (isGlobal() && !['ca', 'dean', 'hod', 'dept', 'iqac', 'dean_research', 'doc_officer'].includes(U.role) && !isOfficer());
-      if (canUnivApprove) {
-        body = card(open, "APPROVED", isPart ? "Authorise Participation (Dean Research, ACU)" : "Authorise Event (Central IQAC)");
-      }
+      body = card(open, "APPROVED", isPart ? "Grant Final University Approval (Central IQAC · Academic Participation)" : "Grant Final University Approval (Central IQAC · Event Organized)");
     } else if (open.status === "SUBMITTED" && verStage) {
       body = vcard(open);
     }
@@ -3138,17 +3290,20 @@ function review() {
     window.REVIEW_OPEN = null;
   }
   const q = (window.REVIEW_Q || "").toLowerCase(), sf = window.REVIEW_SF || "";
-  const inSf = e => !sf || (sf === "Pending" ? ["PENDING", "HOD_APPROVED", "DAPPROVED"].includes(e.status) : sf === "Approved" ? ["APPROVED", "SUBMITTED", "COMPLETED"].includes(e.status) : sf === "Rejected" ? ["REJECTED", "RETURNED", "CRETURNED"].includes(e.status) : true);
+  const inSf = e => !sf || (
+    sf === "Pending" ? ["PENDING", "HOD_APPROVED", "DAPPROVED", "RESEARCH_APPROVED"].includes(e.status) :
+    sf === "Approved" ? ["APPROVED", "SUBMITTED", "COMPLETED"].includes(e.status) :
+    sf === "Rejected" ? ["REJECTED", "RETURNED", "CRETURNED"].includes(e.status) : true
+  );
   const all = [...E].reverse().filter(e => inSf(e) && (!q || (e.num + " " + e.title + " " + (e.by || "") + " " + dn(e.dept) + " " + cn(eCollege(e))).toLowerCase().includes(q)));
   
-  const univPending = isIQAC() ? D.filter(e => !isPartEvent(e)) : isDeanResearch() ? D.filter(e => isPartEvent(e)) : D;
-  
-  $("#app").innerHTML = `<h2>Approvals &amp; Verification</h2><p class="s">Every decision is recorded against the Event ID. Follows the official workflow: Staff Submission → HOD Review → Dean / Principal Review → Central IQAC / Dean Research Authorisation → Report Submission → Evidence Verification.</p>` +
+  $("#app").innerHTML = `<h2>Approvals &amp; Verification</h2><p class="s">Every decision is recorded against the Event ID. Follows the official university workflows:<br>• <b>Event Organized:</b> Department User → HOD Review → Dean / Principal Review → Central IQAC Final Authorisation.<br>• <b>Academic Participation:</b> Department User → HOD Review → Dean / Principal Review → Dean Research Review → Central IQAC Final Authorisation.</p>` +
     (hodStage ? `<h3>1. Department Proposals (${P.length})</h3>${P.map(row).join("") || '<div class="card empty">No pending department proposals.</div>'}` : '') +
     (deanStage ? `<h3>2. College Dean Approvals (${H.length})</h3>${H.map(row).join("") || '<div class="card empty">No proposals awaiting College Dean approval.</div>'}` : '') +
-    ((univStage || deanStage) ? `<h3>3. University Final Authorisations (${univPending.length})</h3>${univPending.map(row).join("") || '<div class="card empty">No proposals awaiting University authorisation.</div>'}` : '') +
-    (verStage ? `<h3>4. Completion Evidence Verification (${V.length})</h3>${V.map(row).join("") || '<div class="card empty">Nothing waiting for verification.</div>'}` : '') +
-    `<h3>All requests</h3><div class="card"><div class="back-filters bv-filters"><div><label for="rv_q">Search</label><input id="rv_q" type="search" value="${esc(window.REVIEW_Q || "")}" placeholder="Event ID, title, requester, college, department"></div><div><label for="rv_sf">Status</label><select id="rv_sf"><option value="">All Requests</option>${["Pending", "Approved", "Rejected"].map(o => `<option ${sf === o ? "selected" : ""}>${o}</option>`).join("")}</select></div></div>${all.length ? `<div class="tw" style="margin-top:10px"><table><tr><th>Event ID</th><th>Event</th><th>Requester</th><th>College</th><th>Department</th><th>Submitted</th><th>Status</th><th></th></tr>${all.map(e => `<tr><td><code>${esc(e.num)}</code></td><td>${esc(e.title)}</td><td>${esc(e.by || "—")}</td><td>${esc(cn(eCollege(e)))}</td><td>${esc(dn(e.dept))}</td><td>${String(e.submittedAt || (e.hist && e.hist[0] && e.hist[0][0]) || "").slice(0, 10)}</td><td>${badge(e.status, e)}</td><td><a href="#/events/view/${e.id}"><button class="g sm">View</button></a>${["PENDING", "HOD_APPROVED", "DAPPROVED", "SUBMITTED"].includes(e.status) ? ` <button class="sm" onclick="window.REVIEW_OPEN='${e.id}';review()">Open form</button>` : ""}</td></tr>`).join("")}</table></div>` : '<div class="empty">No requests match.</div>'}</div>`;
+    ((researchStage || deanStage) ? `<h3>3. Dean Research Review — Academic Participation (${R.length})</h3>${R.map(row).join("") || '<div class="card empty">No academic participation proposals awaiting Dean Research review.</div>'}` : '') +
+    ((iqacStage || deanStage) ? `<h3>4. Central IQAC Final Authorisations (${Q.length})</h3>${Q.map(row).join("") || '<div class="card empty">No proposals awaiting Central IQAC final authorisation.</div>'}` : '') +
+    (verStage ? `<h3>5. Completion Evidence Verification (${V.length})</h3>${V.map(row).join("") || '<div class="card empty">Nothing waiting for verification.</div>'}` : '') +
+    `<h3>All requests</h3><div class="card"><div class="back-filters bv-filters"><div><label for="rv_q">Search</label><input id="rv_q" type="search" value="${esc(window.REVIEW_Q || "")}" placeholder="Event ID, title, requester, college, department"></div><div><label for="rv_sf">Status</label><select id="rv_sf"><option value="">All Requests</option>${["Pending", "Approved", "Rejected"].map(o => `<option ${sf === o ? "selected" : ""}>${o}</option>`).join("")}</select></div></div>${all.length ? `<div class="tw" style="margin-top:10px"><table><tr><th>Event ID</th><th>Event</th><th>Requester</th><th>College</th><th>Department</th><th>Submitted</th><th>Status</th><th></th></tr>${all.map(e => `<tr><td><code>${esc(e.num)}</code></td><td>${esc(e.title)}</td><td>${esc(e.by || "—")}</td><td>${esc(cn(eCollege(e)))}</td><td>${esc(dn(e.dept))}</td><td>${String(e.submittedAt || (e.hist && e.hist[0] && e.hist[0][0]) || "").slice(0, 10)}</td><td>${badge(e.status, e)}</td><td><a href="#/events/view/${e.id}"><button class="g sm">View</button></a>${["PENDING", "HOD_APPROVED", "DAPPROVED", "RESEARCH_APPROVED", "SUBMITTED"].includes(e.status) ? ` <button class="sm" onclick="window.REVIEW_OPEN='${e.id}';review()">Open form</button>` : ""}</td></tr>`).join("")}</table></div>` : '<div class="empty">No requests match.</div>'}</div>`;
   $("#rv_q").oninput = () => { window.REVIEW_Q = $("#rv_q").value; review(); const el = $("#rv_q"); el.focus(); el.setSelectionRange(el.value.length, el.value.length) };
   $("#rv_sf").onchange = () => { window.REVIEW_SF = $("#rv_sf").value; review() };
   hydrate($("#app"))
@@ -3160,13 +3315,29 @@ function dec(id, s) {
   if (!ok) return alert("This event is not waiting for a decision from your approval stage.");
   const sName = ST[s] ? ST[s][0] : s;
   if (!confirm(`Confirm: mark "${e.title}" as ${sName}${n ? " with remark: " + n : ""}?`)) return;
-  const stage = approvalStage(e.status) || "verification", at = new Date().toISOString();
+  const stage = approvalStage(e) || "verification", at = new Date().toISOString();
   e.status = s; e.remark = n;
   if (s === "HOD_APPROVED") {
     e.hodApproved = true;
     e.hodApprovedBy = U.name;
     e.hodApprovedAt = at;
   }
+  if (s === "DAPPROVED") {
+    e.deanApproved = true;
+    e.deanApprovedBy = U.name;
+    e.deanApprovedAt = at;
+  }
+  if (s === "RESEARCH_APPROVED") {
+    e.researchApproved = true;
+    e.researchApprovedBy = U.name;
+    e.researchApprovedAt = at;
+  }
+  if (s === "APPROVED") {
+    e.iqacApproved = true;
+    e.iqacApprovedBy = U.name;
+    e.iqacApprovedAt = at;
+  }
+  e.hist = e.hist || [];
   e.hist.push([at, sName + " by " + U.name + (n ? ": " + n : "")]);
   (e.approvals = e.approvals || []).push({ stage, decision: s, by: U.id, byName: U.name, remarks: n, at });
   sendNotice({ event: e, status: s, title: sName, message: `${e.title} updated to ${sName} by ${U.name}${n ? " (" + n + ")" : ""}` });

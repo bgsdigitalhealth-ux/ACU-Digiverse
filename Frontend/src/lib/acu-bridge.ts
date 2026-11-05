@@ -88,7 +88,13 @@ export async function loadAcuState(uid: string) {
   for (const it of items || []) {
     const d = it.data as Any;
     if (it.collection === "subs") S.subs[d.key] = d.value;
-    else if (S[it.collection]) S[it.collection].push(d);
+    else if (S[it.collection]) {
+      if (it.collection === "events") {
+        if (d.status === "PENDING" && d.hodApproved) d.status = "HOD_APPROVED";
+        if (d.status === "DAPPROVED" && d.researchApproved) d.status = "RESEARCH_APPROVED";
+      }
+      S[it.collection].push(d);
+    }
   }
 
   let rowSnap = new Map([...rowsFromState(S)].map(([k, r]) => [k, JSON.stringify(r)]));
@@ -118,8 +124,14 @@ export async function loadAcuState(uid: string) {
       let { error } = await supabase.from("app_items").upsert(ups);
       if (error && ups.some((r) => r.collection === "events")) {
         const fallbackUps = ups.map((r) => {
-          if (r.collection === "events" && (r.data as any)?.status === "HOD_APPROVED") {
-            return { ...r, data: { ...(r.data as any), status: "PENDING", hodApproved: true } };
+          if (r.collection === "events") {
+            const d = (r.data as any) || {};
+            if (d?.status === "HOD_APPROVED") {
+              return { ...r, data: { ...d, status: "PENDING", hodApproved: true } };
+            }
+            if (d?.status === "RESEARCH_APPROVED") {
+              return { ...r, data: { ...d, status: "DAPPROVED", researchApproved: true } };
+            }
           }
           return r;
         });

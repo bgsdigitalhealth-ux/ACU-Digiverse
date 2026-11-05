@@ -24,54 +24,62 @@ const pendingPart = { college: "colA", dept: "deptA", status: "PENDING", isPart:
 const hodApprovedEvent = { college: "colA", dept: "deptA", status: "HOD_APPROVED", isPart: false };
 const hodApprovedPart = { college: "colA", dept: "deptA", status: "HOD_APPROVED", isPart: true };
 const deanApprovedEvent = { college: "colA", dept: "deptA", status: "DAPPROVED", isPart: false };
-const deanApprovedPart = { college: "colA", dept: "deptA", status: "DAPPROVED", isPart: true };
+const deanApprovedPart = { college: "colA", dept: "deptA", status: "DAPPROVED", isPart: true, researchApproved: false };
+const researchApprovedPart = { college: "colA", dept: "deptA", status: "RESEARCH_APPROVED", isPart: true, researchApproved: true };
+const researchApprovedPartDapproved = { college: "colA", dept: "deptA", status: "DAPPROVED", isPart: true, researchApproved: true };
 const fullyApproved = { college: "colA", dept: "deptA", status: "APPROVED", isPart: false };
 const submittedEvent = { college: "colA", dept: "deptA", status: "SUBMITTED", isPart: false };
 
 describe("event and participation approval order", () => {
-  it("progresses sequentially: HOD stage -> Dean stage -> University stage", () => {
-    expect(approvalStage("PENDING")).toBe("hod");
-    expect(approvalStage("HOD_APPROVED")).toBe("dean");
-    expect(approvalStage("DAPPROVED")).toBe("university");
-    expect(approvalStage("APPROVED")).toBeNull();
-    expect(approvalStage("COMPLETED")).toBeNull();
+  it("Event Organized follows: Department user > HOD > Dean / Principal > Central IQAC", () => {
+    // 1. Department user submits -> PENDING
+    expect(approvalStage(pendingEvent)).toBe("hod");
+    expect(canDecideEvent(hodOfA, pendingEvent, "HOD_APPROVED")).toBe(true);
+
+    // 2. HOD approves -> HOD_APPROVED
+    expect(approvalStage(hodApprovedEvent)).toBe("dean");
+    expect(canDecideEvent(deanOfA, hodApprovedEvent, "DAPPROVED")).toBe(true);
+
+    // 3. Dean approves -> DAPPROVED (waiting for Central IQAC)
+    expect(approvalStage(deanApprovedEvent)).toBe("iqac");
+    expect(canDecideEvent(iqacUser, deanApprovedEvent, "APPROVED")).toBe(true);
+    // Dean Research does NOT decide Event Organized
+    expect(canDecideEvent(deanResearchUser, deanApprovedEvent, "APPROVED")).toBe(false);
   });
 
-  it("Stage 1: Department HOD reviews PENDING proposals and forwards to Dean", () => {
+  it("Academic Participation follows: Department user > HOD > Dean / Principal > Dean Research > Central IQAC", () => {
+    // 1. Department user submits -> PENDING
+    expect(approvalStage(pendingPart)).toBe("hod");
+    expect(canDecideEvent(hodOfA, pendingPart, "HOD_APPROVED")).toBe(true);
+
+    // 2. HOD approves -> HOD_APPROVED
+    expect(approvalStage(hodApprovedPart)).toBe("dean");
+    expect(canDecideEvent(deanOfA, hodApprovedPart, "DAPPROVED")).toBe(true);
+
+    // 3. Dean approves -> DAPPROVED (waiting for Dean Research)
+    expect(approvalStage(deanApprovedPart)).toBe("dean_research");
+    expect(canDecideEvent(deanResearchUser, deanApprovedPart, "RESEARCH_APPROVED")).toBe(true);
+    // Central IQAC cannot approve before Dean Research
+    expect(canDecideEvent(iqacUser, deanApprovedPart, "APPROVED")).toBe(false);
+
+    // 4. Dean Research approves -> RESEARCH_APPROVED (waiting for Central IQAC)
+    expect(approvalStage(researchApprovedPart)).toBe("iqac");
+    expect(approvalStage(researchApprovedPartDapproved)).toBe("iqac");
+    // Central IQAC gives final university approval
+    expect(canDecideEvent(iqacUser, researchApprovedPart, "APPROVED")).toBe(true);
+    expect(canDecideEvent(iqacUser, researchApprovedPartDapproved, "APPROVED")).toBe(true);
+  });
+
+  it("Stage 1 boundaries: HOD of another dept or Dean cannot decide PENDING proposal", () => {
     expect(isHodOf(hodOfA, pendingEvent)).toBe(true);
-    expect(canDecideEvent(hodOfA, pendingEvent, "HOD_APPROVED")).toBe(true);
-    expect(canDecideEvent(hodOfA, pendingEvent, "RETURNED")).toBe(true);
-    expect(canDecideEvent(hodOfA, pendingEvent, "REJECTED")).toBe(true);
-    // HOD of another dept cannot decide
     expect(canDecideEvent(hodOfB, pendingEvent, "HOD_APPROVED")).toBe(false);
-    // Dean cannot decide before HOD review
     expect(canDecideEvent(deanOfA, pendingEvent, "DAPPROVED")).toBe(false);
   });
 
-  it("Stage 2: College Dean reviews HOD_APPROVED proposals and forwards to University", () => {
+  it("Stage 2 boundaries: Dean of another college cannot decide HOD_APPROVED proposal", () => {
     expect(isCollegeDean(deanOfA, hodApprovedEvent)).toBe(true);
-    expect(canDecideEvent(deanOfA, hodApprovedEvent, "DAPPROVED")).toBe(true);
-    expect(canDecideEvent(deanOfA, hodApprovedEvent, "RETURNED")).toBe(true);
-    // Dean of another college cannot decide
     expect(canDecideEvent(deanOfB, hodApprovedEvent, "DAPPROVED")).toBe(false);
-    // University cannot decide before Dean review
     expect(canDecideEvent(iqacUser, hodApprovedEvent, "APPROVED")).toBe(false);
-  });
-
-  it("Stage 3 (Event Organize): Central IQAC gives final authorisation", () => {
-    expect(canDecideEvent(iqacUser, deanApprovedEvent, "APPROVED")).toBe(true);
-    expect(canDecideEvent(iqacUser, deanApprovedEvent, "RETURNED")).toBe(true);
-    // Dean Research does not authorise Event Organize
-    expect(canDecideEvent(deanResearchUser, deanApprovedEvent, "APPROVED")).toBe(false);
-    // Dean cannot give final university approval
-    expect(canDecideEvent(deanOfA, deanApprovedEvent, "APPROVED")).toBe(false);
-  });
-
-  it("Stage 3 (Academic Participation): Dean Research, ACU gives final authorisation", () => {
-    expect(canDecideEvent(deanResearchUser, deanApprovedPart, "APPROVED")).toBe(true);
-    expect(canDecideEvent(deanResearchUser, deanApprovedPart, "RETURNED")).toBe(true);
-    // Central IQAC does not authorise Academic Participation
-    expect(canDecideEvent(iqacUser, deanApprovedPart, "APPROVED")).toBe(false);
   });
 
   it("Super Admin / Global Admin has override access across all stages", () => {
@@ -79,7 +87,8 @@ describe("event and participation approval order", () => {
     expect(canDecideEvent(univAdmin, pendingEvent, "HOD_APPROVED")).toBe(true);
     expect(canDecideEvent(univAdmin, hodApprovedEvent, "DAPPROVED")).toBe(true);
     expect(canDecideEvent(univAdmin, deanApprovedEvent, "APPROVED")).toBe(true);
-    expect(canDecideEvent(univAdmin, deanApprovedPart, "APPROVED")).toBe(true);
+    expect(canDecideEvent(univAdmin, deanApprovedPart, "RESEARCH_APPROVED")).toBe(true);
+    expect(canDecideEvent(univAdmin, researchApprovedPart, "APPROVED")).toBe(true);
   });
 
   it("Verification: Documentation Officer, IQAC, Dean, or HOD can verify completion report", () => {

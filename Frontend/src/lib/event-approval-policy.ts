@@ -1,7 +1,7 @@
 // Approval order for university events and academic participation. Kept browser-safe and free of imports so the
 // legacy workspace script, the tests and the database trigger all agree on one rule set:
-// 1. Event Organize: Staff Submission -> Department HOD -> Dean / Principal -> Central IQAC -> Event Conducted -> Report Submission -> Final Review & Documentation
-// 2. Academic Participation: Staff Submission -> Department HOD -> Dean / Principal -> Dean Research, ACU -> Participation -> Report Submission -> Final Review & Documentation
+// 1. Event Organized: Department User -> Department HOD -> Dean / Principal -> Central IQAC -> Event Conducted -> Report Submission -> Evidence Verification
+// 2. Academic Participation: Department User -> Department HOD -> Dean / Principal -> Dean Research, ACU -> Central IQAC -> Participation -> Report Submission -> Evidence Verification
 
 export type ApprovalUser = {
   role: string;
@@ -14,15 +14,25 @@ export type ApprovalEvent = {
   dept?: string | null;
   status?: string;
   isPart?: boolean;
+  hodApproved?: boolean;
+  deanApproved?: boolean;
+  researchApproved?: boolean;
 };
 
-export type ApprovalDecision = "HOD_APPROVED" | "DAPPROVED" | "APPROVED" | "RETURNED" | "REJECTED";
+export type ApprovalDecision =
+  | "HOD_APPROVED"
+  | "DAPPROVED"
+  | "RESEARCH_APPROVED"
+  | "APPROVED"
+  | "RETURNED"
+  | "REJECTED";
 
 /** Statuses an event row may hold, in workflow order. */
 export const EVENT_STATUSES = [
   "PENDING",
   "HOD_APPROVED",
   "DAPPROVED",
+  "RESEARCH_APPROVED",
   "RETURNED",
   "REJECTED",
   "APPROVED",
@@ -56,13 +66,38 @@ export const isDeanResearchUser = (u: ApprovalUser) => u.role === "dean_research
 /** Institutional Reporting / Documentation Officer role. */
 export const isDocOfficerUser = (u: ApprovalUser) => u.role === "doc_officer";
 
-/** Which approval stage a status is waiting at, or null when no approval decision applies. */
-export const approvalStage = (status?: string): "hod" | "dean" | "university" | null =>
-  status === "PENDING" ? "hod" : status === "HOD_APPROVED" ? "dean" : status === "DAPPROVED" ? "university" : null;
+/**
+ * Which approval stage an event is currently waiting at:
+ * - "hod": Department HOD
+ * - "dean": College Dean / Principal
+ * - "dean_research": Dean Research, ACU (for Academic Participation only)
+ * - "iqac": Central IQAC (final university approval for both Event Organized and Academic Participation)
+ * - null: Not waiting for approval (e.g. APPROVED, SUBMITTED, COMPLETED, RETURNED, REJECTED)
+ */
+export const approvalStage = (
+  eOrStatus?: ApprovalEvent | string,
+  isPartParam?: boolean
+): "hod" | "dean" | "dean_research" | "iqac" | null => {
+  if (!eOrStatus) return null;
+  const status = typeof eOrStatus === "string" ? eOrStatus : eOrStatus.status;
+  const isPart = typeof eOrStatus === "string" ? Boolean(isPartParam) : Boolean(eOrStatus.isPart);
+  const researchApproved = typeof eOrStatus === "string" ? false : Boolean(eOrStatus.researchApproved);
+
+  if (status === "PENDING") return "hod";
+  if (status === "HOD_APPROVED") return "dean";
+  if (status === "DAPPROVED") {
+    // For Academic Participation: Dean / Principal -> Dean Research -> Central IQAC
+    if (isPart && !researchApproved) return "dean_research";
+    // For Event Organized: Dean / Principal -> Central IQAC
+    return "iqac";
+  }
+  if (status === "RESEARCH_APPROVED") return "iqac";
+  return null;
+};
 
 /** Who may take which decision, given the stage the event is currently waiting at. */
 export const canDecideEvent = (u: ApprovalUser, e: ApprovalEvent, decision: ApprovalDecision) => {
-  const stage = approvalStage(e.status);
+  const stage = approvalStage(e);
   if (!stage) return false;
 
   // Stage 1: Department HOD Review (PENDING -> HOD_APPROVED)
@@ -83,14 +118,19 @@ export const canDecideEvent = (u: ApprovalUser, e: ApprovalEvent, decision: Appr
     return false;
   }
 
-  // Stage 3: University Authorisation (DAPPROVED -> APPROVED)
-  if (stage === "university") {
-    const isPart = e.isPart === true;
-    const canAuthorize =
-      u.role === "su" ||
-      (isPart ? isDeanResearchUser(u) : isIQACUser(u)) ||
-      isGlobalAdmin(u);
-    if (!canAuthorize) return false;
+  // Stage 3 (Academic Participation only): Dean Research, ACU Review (DAPPROVED -> RESEARCH_APPROVED)
+  if (stage === "dean_research") {
+    const canResearch = isDeanResearchUser(u) || u.role === "su" || isGlobalAdmin(u);
+    if (!canResearch) return false;
+    if (decision === "RESEARCH_APPROVED" || decision === "APPROVED") return true;
+    if (decision === "RETURNED" || decision === "REJECTED") return true;
+    return false;
+  }
+
+  // Stage 4 (Final University Authorisation): Central IQAC (DAPPROVED/RESEARCH_APPROVED -> APPROVED)
+  if (stage === "iqac") {
+    const canIQAC = isIQACUser(u) || u.role === "su" || isGlobalAdmin(u);
+    if (!canIQAC) return false;
     if (decision === "APPROVED") return true;
     if (decision === "RETURNED" || decision === "REJECTED") return true;
     return false;
